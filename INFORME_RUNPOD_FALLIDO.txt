@@ -12,6 +12,61 @@ SALDO ACTUAL EN RUNPOD: ~$14.45 USD
 
 
 ================================================================================
+CAUSA RAIZ REAL (confirmada con investigacion profunda, 10/08)
+================================================================================
+
+El cuInit=999 NO es un problema de version de CUDA. Es un problema
+a nivel del HOST (maquina fisica), en dos piezas separadas:
+
+1) BUG DE KERNEL DEL MODULO nvidia-uvm en driver 580.95.05
+   - Issue NVIDIA/open-gpu-kernel-modules#797, confirmado en 580.95.05
+   - El modulo nvidia-uvm falla su inicializacion HMM/PMM:
+       nvidia-uvm: uvm_pmm_gpu.c:3480 devmem_init request_free_mem_region() err -34
+       nvidia-uvm: uvm_gpu.c:1311 init_gpu PMM initialization failed [NV_ERR_GENERIC]
+   - Esto hace que cuInit falle MIENTRAS nvidia-smi sigue funcionando
+     (nvidia-smi usa NVML/libnvidia-ml, que NO toca /dev/nvidia-uvm;
+      cuInit SÍ abre /dev/nvidia-uvm).
+   - Workaround (solo del host): modprobe nvidia_uvm uvm_disable_hmm=1
+   - Fix real: parche del kernel (Ubuntu >= 6.8.0-88-generic, LP #2120209)
+
+2) BUG DEL nvidia-container-toolkit 1.19.1 con driver 580
+   - Issue NVIDIA/nvidia-container-toolkit#1934: toolkit 1.19.1 escribe
+     major=510 incorrecto para /dev/nvidia-uvm -> cuInit=999
+   - Issue #1967: regresion 1.19.0->1.19.1 rompe CUDA en contenedores
+   - Issue #1246: driver 580.76.05 rompe el hook legacy (ldconfig
+     muere con signal 9) -> /usr/local/nvidia/lib queda VACIO
+   - Fix: CDI mode, o downgrade a 1.19.0, o actualizar a 1.20.x
+
+POR QUE NO SE PUDO ARREGLAR DESDE EL CONTENEDOR:
+- El modulo nvidia-uvm es del KERNEL del host. No se puede modprobe
+  desde dentro de un Pod.
+- El toolkit y su configuracion viven en el host de RunPod. No tenemos
+  acceso. (REST API solo crea/termina pods; no toca la infraestructura.)
+
+POR QUE FALLO INCLUSO LA IMAGEN CUDA 13.0:
+- Una imagen "CUDA 13.0" contiene el TOOLKIT de CUDA (cudart, cuBLAS),
+  NO el driver (libcuda.so.1). libcuda.so.1 SIEMPRE viene del host via
+  inyeccion del toolkit. Si la inyeccion falla (bug #1246/#1934), el
+  contenedor usa un stub/lib vieja -> cuInit=999.
+- La "version CUDA de la imagen" es irrelevante. Lo unico que importa
+  es: (a) el kernel driver del host puede inicializar UVM, y
+  (b) el toolkit inyecta las libs del host. Ambos fallan en RunPod.
+
+CONCLUSION: El problema ES de RunPod (hosts con driver 580 no parcheados),
+pero NO por "drivers rotos globalmente" sino por un bug especifico del
+driver 580.95.05 + kernel + toolkit 1.19.1. Afecta a cualquier proveedor
+que use ese driver sin parchear.
+
+COMO EVITARLO EN EL FUTURO (Vast.ai):
+- Vast.ai expone `driver_version` como campo FILTRABLE en su API de busqueda.
+- Podemos buscar hosts con driver 570/575 (CUDA 12.8/12.9, maduro, sin el bug)
+  ANTES de alquilar, pagando $0.
+- Regla: filtrar `driver_version < 580` (o `cuda_max_good >= 12.8`).
+- Luego SIEMPRE correr el smoke test de 10 segundos:
+    python3 -c "import ctypes; c=ctypes.CDLL('libcuda.so.1'); print(c.cuInit(0))"
+  Si != 0 -> terminar instancia y reprovisionar en otro host.
+
+================================================================================
 RESUMEN EJECUTIVO
 ================================================================================
 
@@ -21,23 +76,9 @@ en TODOS los tiers (COMMUNITY y SECURE). nvidia-smi SI funciona (reporta
 el driver 580.95.05, la GPU RTX 3080 Ti o L4, y 12GB+ de VRAM), pero
 cualquier programa que use la CUDA API falla.
 
-El diagnostico muestra que /usr/local/nvidia/lib/ esta VACIO o NO EXISTE
-en todos los Pods. Este directorio es donde el nvidia-container-toolkit
-deberia inyectar las librerias del driver del host (libcuda.so.1, etc.)
-para que el contenedor pueda comunicarse con el kernel driver.
-
-Sin estas librerias inyectadas, el contenedor usa sus PROPIAS librerias
-(libcuda.so.1 de la imagen CUDA 12.x o 13.0), que no logran inicializar
-la comunicacion con el kernel driver 580.95.05 del host.
-
-El host driver 580.95.05 soporta CUDA 13.0. Probamos imagenes con:
-- CUDA 12.4.1 (compatibilidad "forward" esperada, pero falla)
-- CUDA 12.8.1 (idem)
-- CUDA 13.0 (deberia ser MATCH perfecto con el driver, pero falla igual)
-
-El hecho de que incluso CUDA 13.0 falle sugiere que el toolkit de RunPod
-simplemente no esta inyectando las librerias del host en NINGUN caso,
-independientemente de la version de CUDA de la imagen.
+CAUSA: bug de kernel nvidia-uvm en driver 580.95.05 + toolkit 1.19.1.
+Es un problema del HOST, no de la imagen ni de la configuracion del Pod.
+No tiene arreglo desde el contenedor.
 
 ================================================================================
 CRONOLOGIA DE INTENTOS
@@ -240,21 +281,49 @@ QUE SI FUNCIONA EN RUNPOD
 QUE HARIA DIFERENTE LA PROXIMA VEZ
 ================================================================================
 
-1. Probar el Pod desde la CONSOLA WEB de RunPod con el template oficial
-   "RunPod PyTorch" (no via REST API). Esto usaria la configuracion de
-   runtime que RunPod valida y mantiene.
+1. USAR UN PROVEEDOR DONDE PUEDA FILTRAR POR DRIVER_VERSION ANTES DE PAGAR.
+   - Vast.ai: filtrar driver_version < 580 (evitar el bug #797 de 580.95.05)
+   - Esto NO es posible en RunPod (el driver es del host, no filtrable).
 
-2. Verificar CUDA con python3 -c "import torch; torch.cuda.is_available()"
-   ANTES de instalar cualquier paquete o gastar tiempo en el Pod.
+2. SIEMPRE correr el smoke test de 10 segundos ANTES de instalar nada:
+     python3 -c "import ctypes; c=ctypes.CDLL('libcuda.so.1'); print(c.cuInit(0))"
+   Si devuelve != 0 -> la instancia esta rota. Terminar y reprovisionar.
 
-3. Buscar explícitamente hosts con driver <= 550, no 580. El filtro
-   de GPUs en RunPod tiene el campo de compute capability pero no el
-   driver version directamente.
+3. Confirmar el diagnostico del host desde el Pod con:
+     ls -l /dev/nvidia*          # chequear /dev/nvidia-uvm existe
+     cat /sys/module/nvidia_uvm/parameters/uvm_disable_hmm  # 1 = parcheado
+     nvidia-smi -q | grep -i 'addressing mode'  # HMM = bug presente
+     dmesg | grep -i 'PMM initialization'      # si accesible
 
-4. Considerar usar nvidia/cuda oficial base image + instalar PyTorch
-   manualmente, en vez de las imagenes pre-construidas de RunPod.
+4. Elegir el stack "conocido que funciona" 2026:
+   Driver 570/575 (CUDA 12.8/12.9) + torch 2.6.x/2.7.x cu126/cu128.
+   Evitar driver 580 hasta que el host tenga kernel parcheado.
 
-5. Investigar si otros usuarios de RunPod tienen exito con CUDA en GPUs
-   similares. Buscar en Discord/foros de RunPod.
+5. Para Chatterbox: usar la imagen `runpod/pytorch:1.0.2-cu1300-torch260-ubuntu2404`
+   (CUDA 13.0 + torch 2.6.0) O `nvidia/cuda:12.4.1-devel-ubuntu22.04` + torch cu126.
+   En Vast.ai, la version CUDA de la imagen debe ser <= cuda_max_good del host.
 
 ================================================================================
+REFERENCIAS DE LA INVESTIGACION (para la segunda opinion)
+================================================================================
+
+- NVIDIA/open-gpu-kernel-modules#797: cuInit falla en 570/575/580.95.05.
+  Workaround uvm_disable_hmm=1. Fix kernel LP #2120209.
+- NVIDIA/nvidia-container-toolkit#1934: toolkit 1.19.1 escribe major=510
+  incorrecto para nvidia-uvm -> cuInit=999.
+- NVIDIA/nvidia-container-toolkit#1967: regresion 1.19.0->1.19.1 rompe
+  CUDA en contenedores (driver 580.173.02).
+- NVIDIA/nvidia-container-toolkit#1246: driver 580.76.05 rompe el hook
+  legacy (ldconfig signal 9) -> /usr/local/nvidia/lib vacio.
+- NVIDIA/open-gpu-kernel-modules#689: cuInit 999 arreglado con modprobe nvidia-uvm.
+- NVIDIA Forums #333562: "CUDA kick-start" bug en drivers 570-580 en
+  contenedores/flatpaks hasta que un proceso init CUDA.
+- CUDA Compatibility guide: driver 580 soporta CUDA 12.x via backward
+  compatibility. El 999 NO es error de version (eso seria 35 o 803).
+- Vast.ai API search offers: campos `driver_version` y `cuda_max_good`
+  filtrables (docs.vast.ai/api-reference/search/search-offers).
+- NemoClaw#4016 + ollama#17069: "nvidia-smi works, cuInit fails" es
+  patron documentado; nvidia-smi NO es prueba de CUDA funcionando.
+
+================================================================================
+

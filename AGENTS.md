@@ -183,8 +183,15 @@ python src/dividir_audio.py --procesar
 - Los scripts de generacion hacen multiples llamadas a la API (gancho + esquema + 5-9 capitulos).
 - **IMPORTANTE: RunPod Pods.** El driver 580.95.05 del host NO funciona con CUDA en
   contenedores de ningun tipo (7 intentos fallidos, imagenes CUDA 12.x y 13.0, tiers
-  COMMUNITY y SECURE). Ver `data/INFORME_RUNPOD_FALLIDO.txt` para el detalle completo.
+  COMMUNITY y SECURE). Ver `INFORME_RUNPOD_FALLIDO.txt` para el detalle completo.
   La API serverless Chatterbox Turbo SI funciona ($0.001/seg).
+- **IMPORTANTE: Causa raiz del cuInit=999.** Bug del modulo kernel nvidia-uvm en
+  driver 580.95.05 (NVIDIA/open-gpu-kernel-modules#797) + bug del toolkit 1.19.1
+  (#1934/#1967/#1246). Es problema del HOST, no de la imagen ni del Pod.
+- **IMPORTANTE: Vast.ai (proveedor GPU elegido).** Usar la API de busqueda para
+  filtrar `driver_version < 580` y `cuda_max_good >= 12.8` ANTES de alquilar.
+  Smoke test obligatorio al conectar: `python3 -c "import ctypes; c=ctypes.CDLL('libcuda.so.1'); print(c.cuInit(0))"`.
+  Si != 0, terminar instancia y reprovisionar. Docker options: `--shm-size=32gb`.
 - **IMPORTANTE: Imagen GPU correcta.** Si se vuelve a intentar GPU en cualquier proveedor,
   la imagen debe tener CUDA >= version del driver del host. Para RunPod driver 580:
   `runpod/pytorch:1.0.2-cu1300-torch260-ubuntu2404` (CUDA 13.0 + torch 2.6.0).

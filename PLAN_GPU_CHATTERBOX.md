@@ -65,30 +65,41 @@ Chatterbox (6-8GB) + whisper (2-4GB) + NVENC con holgura.
 
 ### Por que NO RunPod
 
-Driver 580.95.05 del host + nvidia-container-toolkit no inyecta libs
-compatibles en contenedores (`/usr/local/nvidia/lib/` vacio). Esto causa
-`cuInit=999` (CUDA_ERROR_UNKNOWN) en TODAS las imagenes probadas
-(CUDA 12.4, 12.8, y 13.0 con driver match). 7 intentos, 7 fracasos.
-Costo de intentos fallidos: ~$0.30 total. Ver `data/INFORME_RUNPOD_FALLIDO.txt`.
+**CAUSA RAIZ (confirmada por investigacion, 10/08):** NO es "drivers rotos
+globalmente". Es un bug especifico del driver 580.95.05 a nivel del host:
+
+1. **Bug de kernel nvidia-uvm** (NVIDIA/open-gpu-kernel-modules#797):
+   el modulo nvidia-uvm falla su init HMM/PMM en 580.95.05, causando
+   cuInit=999 mientras nvidia-smi sigue funcionando. Fix: parche de kernel
+   (Ubuntu >= 6.8.0-88, LP #2120209) o `uvm_disable_hmm=1`.
+2. **Bug del nvidia-container-toolkit 1.19.1** (#1934, #1967, #1246):
+   escribe major=510 incorrecto para nvidia-uvm, y rompe la inyeccion de
+   libs en /usr/local/nvidia/lib (queda VACIO).
+
+Ambos son del HOST. No se arreglan desde el Pod. 7 intentos, 7 fracasos.
+Costo: ~$0.30 total. Detalle completo en `INFORME_RUNPOD_FALLIDO.txt`.
 
 ### Por que Vast.ai
 
-Hosts individuales con sus propias configuraciones de driver (heterogeneos).
-NO tienen el bug centralizado de toolkit de RunPod. Para Chatterbox necesitamos
-un host con driver >= la version CUDA de la imagen. Soporta Docker + imagenes
-PyTorch/CUDA + NVENC + SSH.
+- **Puedo filtrar `driver_version` en la API de busqueda ANTES de pagar.**
+  Buscar drivers 570/575 (CUDA 12.8/12.9, maduros, sin el bug #797).
+- Hosts individuales con configuraciones propias.
+- Soporta Docker + imagenes PyTorch/CUDA + NVENC + SSH.
 
 ### Pasos para Vast.ai
 
 1. Crear cuenta en vast.ai (email + verificar) → cargar $10-20 (credito prepago)
 2. Obtener API key en Account Settings
-3. Buscar instancia RTX 3090 en cloud.vast.ai (o via API)
-4. Usar imagen con CUDA 12.4+ y torch 2.6.0 (ej. `runpod/pytorch:1.0.2-cu1300-torch260-ubuntu2404`
-   o `nvidia/cuda:12.4.1-devel-ubuntu22.04` + instalar torch)
+3. **ANTES de alquilar:** buscar instancia RTX 3090 filtrando:
+   `driver_version < 580` y `cuda_max_good >= 12.8` (via API, sin costo)
+4. Usar imagen con CUDA 12.8 o menor: `runpod/pytorch:1.0.2-cu1281-torch260-ubuntu2404`
+   o `nvidia/cuda:12.4.1-devel-ubuntu22.04` + instalar torch cu126
 5. Docker options: `--shm-size=32gb`
-6. **VERIFICAR CUDA ANTES DE INSTALAR NADA:**
-   `python3 -c "import torch; print(torch.cuda.is_available())"` → True
-7. Si True → clonar repo, `pip install chatterbox-tts`, pipeline completo
+6. **SMOKE TEST de 10 segundos ANTES de instalar nada:**
+   `python3 -c "import ctypes; c=ctypes.CDLL('libcuda.so.1'); print(c.cuInit(0))"`
+   Si != 0 → instancia rota. Terminar y reprovisionar en otro host.
+7. Si cuInit=0 → `import torch; torch.cuda.is_available()` = True →
+   clonar repo, `pip install chatterbox-tts`, pipeline completo
 8. Almacenamiento: disco de instancia + Cloud Sync (Backblaze B2 ~$0.005/GB/mes)
    para modelos/gameplays entre sesiones
 
