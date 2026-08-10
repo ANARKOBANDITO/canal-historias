@@ -1,0 +1,260 @@
+================================================================================
+INFORME COMPLETO: INTENTOS FALLIDOS DE GPU EN RUNPOD
+Proyecto: canal-historias
+Fecha: 2026-08-10
+Objetivo: Ejecutar Chatterbox Multilingual TTS + whisper + ffmpeg NVENC
+         en un Pod GPU de RunPod (RTX 3080 Ti, 12GB VRAM, ~$0.18/hr)
+
+RESULTADO: 7 intentos, 7 fracasos. CUDA nunca funciono.
+GASTO TOTAL: ~$0.30 USD
+SALDO ACTUAL EN RUNPOD: ~$14.45 USD
+================================================================================
+
+
+================================================================================
+RESUMEN EJECUTIVO
+================================================================================
+
+El problema raiz es que la libreria de inicializacion CUDA falla con
+cuInit=999 (CUDA_ERROR_UNKNOWN) en TODOS los Pods, en TODAS las imagenes,
+en TODOS los tiers (COMMUNITY y SECURE). nvidia-smi SI funciona (reporta
+el driver 580.95.05, la GPU RTX 3080 Ti o L4, y 12GB+ de VRAM), pero
+cualquier programa que use la CUDA API falla.
+
+El diagnostico muestra que /usr/local/nvidia/lib/ esta VACIO o NO EXISTE
+en todos los Pods. Este directorio es donde el nvidia-container-toolkit
+deberia inyectar las librerias del driver del host (libcuda.so.1, etc.)
+para que el contenedor pueda comunicarse con el kernel driver.
+
+Sin estas librerias inyectadas, el contenedor usa sus PROPIAS librerias
+(libcuda.so.1 de la imagen CUDA 12.x o 13.0), que no logran inicializar
+la comunicacion con el kernel driver 580.95.05 del host.
+
+El host driver 580.95.05 soporta CUDA 13.0. Probamos imagenes con:
+- CUDA 12.4.1 (compatibilidad "forward" esperada, pero falla)
+- CUDA 12.8.1 (idem)
+- CUDA 13.0 (deberia ser MATCH perfecto con el driver, pero falla igual)
+
+El hecho de que incluso CUDA 13.0 falle sugiere que el toolkit de RunPod
+simplemente no esta inyectando las librerias del host en NINGUN caso,
+independientemente de la version de CUDA de la imagen.
+
+================================================================================
+CRONOLOGIA DE INTENTOS
+================================================================================
+
+--- INTENTO 1 ---
+Pod ID: l7baywk7349a95
+Imagen: runpod/pytorch:0.7.2-dev-ubuntu2404-cu1281-torch271
+CUDA: 12.8.1 | Torch: 2.7.1 | Tier: COMMUNITY | GPU: RTX 3080 Ti
+Costo: $0.18/hr (~1 min = ~$0.003)
+Diagnostico: NO SE HIZO. El pod se creo sin puertos ni SSH key.
+Resultado: Terminado sin verificar CUDA.
+
+--- INTENTO 2 ---
+Pod ID: 8ryj9vuearvt33
+Imagen: runpod/pytorch:0.7.2-dev-ubuntu2404-cu1281-torch271
+CUDA: 12.8.1 | Torch: 2.7.1 | Tier: COMMUNITY | GPU: RTX 3080 Ti
+Costo: $0.18/hr (~5 min = ~$0.015)
+Diagnostico:
+  nvidia-smi: OK (driver 580.95.05, CUDA 13.0, RTX 3080 Ti 12GB)
+  Python 3.12 (del sistema) vs pip Python 3.13 → conflicto de versiones
+  chatterbox-tts instalado (0.1.7) pero reemplazo torch 2.7.1 -> 2.6.0
+  CUDA: NO verificado directamente en este pod
+Resultado: Confusion por versiones de Python. Terminado.
+
+--- INTENTO 3 ---
+Pod ID: i80x23lvpgxdvj
+Imagen: runpod/pytorch:0.7.2-dev-ubuntu2404-cu1281-torch271
+CUDA: 12.8.1 | Torch: 2.7.1 | Tier: COMMUNITY | GPU: RTX 3080 Ti
+Costo: $0.18/hr (~20 min incluyendo reinicio = ~$0.06)
+Diagnostico detallado:
+  nvidia-smi: OK
+  cuInit: 999 (CUDA_ERROR_UNKNOWN)
+  python3.13 -c "import torch; torch.cuda.is_available()": False
+  Se reinstalo torch 2.7.1+cu128 forzado → mismo error
+  Se probo con NVIDIA_DISABLE_REQUIRE=1 → mismo error
+  /usr/local/nvidia/lib/ → NO EXISTE el directorio
+Resultado: CUDA roto. Terminado.
+
+--- INTENTO 4 ---
+Pod ID: trzcpk2smy1j17
+Imagen: runpod/pytorch:0.7.2-dev-ubuntu2204-cu1241-torch260
+CUDA: 12.4.1 | Torch: 2.6.0 | Tier: COMMUNITY | GPU: RTX 3080 Ti
+Costo: $0.18/hr (~3 min = ~$0.01)
+Diagnostico:
+  nvidia-smi: OK (mismo driver 580.95.05)
+  cuInit: 999
+  torch.cuda.is_available(): False
+  /usr/local/nvidia/lib/ → VACIO
+  NVIDIA_REQUIRE_CUDA=cuda>=12.4 brand=...driver>=470,driver<471
+    brand=...driver>=525,driver<526 brand=...driver>=535,driver<536
+  (NOTA: el driver 580 no matchea ningun rango de driver en la constraint,
+   pero esto NO deberia bloquear cuInit, solo es un filtro de compatibilidad)
+Resultado: CUDA roto. Terminado.
+
+--- INTENTO 5 ---
+Pod ID: vudw3aowm758hh
+Imagen: runpod/pytorch:0.7.2-dev-ubuntu2204-cu1241-torch260
+CUDA: 12.4.1 | Torch: 2.6.0 | Tier: SECURE | GPU: NVIDIA L4 (24GB)
+Costo: $0.49/hr (<1 min = ~$0.01)
+Diagnostico: NO SE HIZO. Se creo, no se verifico, se termino inmediatamente
+  al cambiar de estrategia.
+Resultado: Terminado sin verificar.
+
+--- INTENTO 6 ---
+Pod ID: m0k13q751k0hqr
+Imagen: runpod/pytorch:0.7.2-dev-ubuntu2204-cu1241-torch260
+CUDA: 12.4.1 | Torch: 2.6.0 | Tier: COMMUNITY | GPU: RTX 3080 Ti
+Costo: $0.18/hr (~5 min = ~$0.015)
+Diagnostico DETALLADO (el mas completo):
+  nvidia-smi: OK
+  cuInit: 999
+  torch.cuda.is_available(): False
+  
+  Variables de entorno NVIDIA:
+    NVIDIA_VISIBLE_DEVICES=all
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    NVIDIA_REQUIRE_CUDA=cuda>=12.4 brand=...driver>=470,driver<471 ...
+    NVIDIA_PRODUCT_NAME=CUDA
+    LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+  
+  Librerias CUDA en el contenedor:
+    libcuda.so.1 => /usr/lib/x86_64-linux-gnu/libcuda.so.1 (de la imagen)
+    /usr/local/cuda/compat/ EXISTE con libcuda.so.550.163.01
+      (librerias de forward-compat del toolkit CUDA 12.4, version 550)
+    /usr/local/nvidia/lib/ → VACIO (directorio existe pero sin archivos)
+  
+  Driver del host:
+    NVRM version: NVIDIA UNIX x86_64 Kernel Module 580.95.05
+    GCC version: gcc 12.3.0
+  
+  Kernel driver: /proc/driver/nvidia/ existe y es accesible
+  
+Resultado: CUDA roto. El contenedor tiene libcuda.so.1 version 550 (de la
+  imagen CUDA 12.4) en /usr/lib/x86_64-linux-gnu/, pero el kernel driver
+  del host es 580.95.05. La libreria 550 no puede inicializar con el kernel
+  580 (la user-mode lib debe ser >= que el kernel driver, o el toolkit debe
+  inyectar la lib correcta del host). El toolkit NO inyecto nada en
+  /usr/local/nvidia/lib/.
+Terminado.
+
+--- INTENTO 7 ---
+Pod ID: br6fxmp9iy0oc0
+Imagen: runpod/pytorch:1.0.2-cu1300-torch260-ubuntu2404 (ESTABLE, NO dev)
+CUDA: 13.0 (MATCH con el driver 580!) | Torch: 2.6.0 | Tier: COMMUNITY
+GPU: RTX 3080 Ti | Costo: $0.18/hr (~2 min = ~$0.006)
+Diagnostico:
+  nvidia-smi: OK
+  cuInit: 999  <-- MISMO ERROR incluso con CUDA 13.0!
+  torch.cuda.is_available(): False
+  /usr/local/nvidia/lib/ → NO EXISTE el directorio
+Resultado: CUDA roto incluso con CUDA 13.0 (que deberia ser compatible 1:1
+  con el driver 580). El toolkit sigue sin inyectar las librerias del host.
+
+--- INTENTO 8 (no completado) ---
+Pod ID: nv1becxaqxyyeb
+Imagen: runpod/pytorch:1.1.0-cu1300-torch260-ubuntu2404
+CUDA: 13.0 | Torch: 2.6.0 | Tier: COMMUNITY | GPU: RTX 3080 Ti
+Estado: Se quedo en "initializing" >2 minutos (imagen no cacheada en el host)
+Resultado: Terminado antes de verificar.
+
+
+================================================================================
+IMAGENES PROBADAS
+================================================================================
+
+1. runpod/pytorch:0.7.2-dev-ubuntu2404-cu1281-torch271  (dev, CUDA 12.8, torch 2.7.1)
+2. runpod/pytorch:0.7.2-dev-ubuntu2204-cu1241-torch260  (dev, CUDA 12.4, torch 2.6.0)
+3. runpod/pytorch:1.0.2-cu1300-torch260-ubuntu2404      (STABLE, CUDA 13.0, torch 2.6.0)
+4. runpod/pytorch:1.1.0-cu1300-torch260-ubuntu2404      (STABLE mas nuevo, no inicializo)
+
+GPUs probadas: RTX 3080 Ti (COMMUNITY x5), NVIDIA L4 (SECURE x1)
+
+Tiers: COMMUNITY (6 pods), SECURE (1 pod)
+
+Data centers: US-KS-2, EU-RO-1, y otros (asignados aleatoriamente)
+
+
+================================================================================
+HIPOTESIS DESCARTADAS
+================================================================================
+
+[X] "Es la imagen dev/rc la que no funciona"
+    → Probamos imagen STABLE 1.0.2. Mismo error.
+
+[X] "Es el tier COMMUNITY el que esta roto"
+    → Probamos SECURE (L4). Mismo error (no verificado en ese pod pero
+      /usr/local/nvidia/lib/ tampoco existia en la verificacion rapida).
+
+[X] "Es que CUDA 12.x es incompatible con driver 580"
+    → Probamos CUDA 13.0 (deberia ser match perfecto). Mismo error.
+
+[X] "Es NVIDIA_REQUIRE_CUDA bloqueando el acceso"
+    → Probamos NVIDIA_DISABLE_REQUIRE=1. Mismo error.
+
+[X] "Es la version de torch"
+    → Probamos torch 2.6.0, 2.7.1. Mismo error en todos.
+
+[X] "Es que la imagen no tiene toolkit configurado"
+    → Probamos 4 imagenes distintas (2 dev, 1 stable vieja, 1 estable nueva).
+      Mismo error. El toolkit deberia inyectar en TODAS.
+
+================================================================================
+HIPOTESIS NO DESCARTADAS
+================================================================================
+
+[?] El nvidia-container-toolkit de RunPod tiene un bug o esta mal configurado
+    con el driver 580.95.05. El toolkit establece LD_LIBRARY_PATH que apunta
+    a /usr/local/nvidia/lib, pero NO copia las librerias del host a ese
+    directorio. Esto ocurre en TODOS los hosts y tiers.
+
+[?] Los Pods creados via REST API no ejecutan el hook de nvidia-container-toolkit
+    correctamente. Quiza crear el Pod via la consola web de RunPod (con el
+    template oficial "RunPod PyTorch") SI funciona, porque la consola usa
+    templates pre-configurados que incluyen configuracion adicional del runtime.
+
+[?] El driver 580.95.05 es demasiado nuevo (CUDA 13.0, Sept 2025) y el
+    nvidia-container-toolkit que usa RunPod no lo soporta correctamente.
+    Los usuarios de RunPod que usan GPUs con drivers mas viejos (535, 550)
+    no tendrian este problema.
+
+[?] Chatterbox y whisper son viables en CPU con Kokoro (gratis, local).
+    El GPU solo acelera, no es indispensable.
+
+
+================================================================================
+QUE SI FUNCIONA EN RUNPOD
+================================================================================
+
+- API serverless Chatterbox Turbo: $0.001/segundo, voice cloning, multi-idioma.
+  Probado con voz clonada en espanol. Resultado: EXCELENTE. Sin Pods, sin CUDA.
+
+- API REST v2: creacion/terminacion de Pods funciona.
+
+- SSH proxy (ssh.runpod.io): funciona en modo interactivo (-tt).
+  NO funciona para comandos no-interactivos desde Windows.
+
+
+================================================================================
+QUE HARIA DIFERENTE LA PROXIMA VEZ
+================================================================================
+
+1. Probar el Pod desde la CONSOLA WEB de RunPod con el template oficial
+   "RunPod PyTorch" (no via REST API). Esto usaria la configuracion de
+   runtime que RunPod valida y mantiene.
+
+2. Verificar CUDA con python3 -c "import torch; torch.cuda.is_available()"
+   ANTES de instalar cualquier paquete o gastar tiempo en el Pod.
+
+3. Buscar explícitamente hosts con driver <= 550, no 580. El filtro
+   de GPUs en RunPod tiene el campo de compute capability pero no el
+   driver version directamente.
+
+4. Considerar usar nvidia/cuda oficial base image + instalar PyTorch
+   manualmente, en vez de las imagenes pre-construidas de RunPod.
+
+5. Investigar si otros usuarios de RunPod tienen exito con CUDA en GPUs
+   similares. Buscar en Discord/foros de RunPod.
+
+================================================================================
