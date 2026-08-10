@@ -1,14 +1,16 @@
 # PLAN: GPU on-demand + Chatterbox para produccion multi-idioma
 
-> **Estado: EN PREPARACION.** El codigo de Fase 1 esta implementado y probado
-> localmente. Falta la Fase 2 (configuracion del Pod en RunPod) y Fase 3
-> (primera prueba de produccion real).
+> **Estado: RUNPOD DESCARTADO PARA PODS.** 7 intentos, 4 imagenes (CUDA 12.4, 12.8, 13.0),
+> todos los tiers (COMMUNITY + SECURE), todos los hosts: `cuInit=999` en cada uno.
+> El nvidia-container-toolkit de RunPod no inyecta libs del host con el driver 580.
+> **La API serverless Chatterbox Turbo SI funciona.**
+> **Alternativa GPU:** Vast.ai (~$0.10-0.20/hr, Docker, sin el problema de driver de RunPod).
 
 ---
 
 ## 1. Objetivo
 
-Migrar el pipeline de audio/video a una GPU on-demand (RunPod, RTX 3060)
+Migrar el pipeline de audio/video a una GPU on-demand (RunPod, RTX 3080 Ti)
 ejecutando:
 - **Chatterbox Multilingual V3** (TTS con voice cloning, multi-idioma)
 - **faster-whisper CUDA** (transcripcion word-level)
@@ -41,16 +43,27 @@ generan con edge-tts (gratis) y se almacenan en `storage/voces/`.
 El modelo es el mismo para los 3 idiomas (Multilingual V3, 500M params,
 6-8 GB VRAM). Se pasa `language_id` por guion.
 
-## 4. Proveedor GPU: RunPod
+## 4. Proveedor GPU: Vast.ai (RunPod descartado)
 
 | Recurso | Especificacion | Costo |
 |---|---|---|
-| GPU | RTX 3060 (12 GB VRAM) | $0.29/hr |
-| Disco | 40 GB | ~$2.80/mes |
-| **Total estimado** | **~4 hrs/mes GPU + almacenamiento** | **~$4/mes** |
+| GPU | RTX 3080 Ti 12GB (interruptible) | ~$0.10-0.20/hr |
+| GPU | RTX 3090 24GB (interruptible) | ~$0.15-0.30/hr |
+| Almacenamiento | Por GB/mes | variable |
+| **Total estimado** | **~4-6 hrs/mes GPU** | **~$1-2/mes** |
 
-El Pod se enciende solo para procesar (1-2 sesiones/semana) y se apaga
-al terminar. Los modelos y gameplays quedan en disco persistente.
+**Por que NO RunPod:** Driver 580.95.05 del host + nvidia-container-toolkit no
+inyecta libs compatibles en contenedores (`/usr/local/nvidia/lib/` vacio).
+Esto causa `cuInit=999` (CUDA_ERROR_UNKNOWN) en TODAS las imagenes probadas
+(CUDA 12.4, 12.8, y 13.0 con driver match). 7 intentos, 7 fracasos.
+Costo de intentos fallidos: ~$0.30 total.
+
+**Por que Vast.ai:** Hosts comunitarios individuales con sus propias configuraciones.
+Sin el problema de toolkit de RunPod. Interruptible = 50-80% mas barato que on-demand.
+Soporta Docker + imagenes PyTorch + CUDA + NVENC.
+
+**Respaldo inmediato (ya probado):** RunPod Chatterbox Turbo API serverless.
+$0.001/segundo, voice cloning, NO Pod ni CUDA.
 
 ## 5. Tiempos estimados por historia (~25 min de audio)
 
@@ -92,10 +105,10 @@ python src/pipeline_gpu.py --cantidad 1
 
 ## 8. Pendientes para Fase 2 (usuario)
 
-- [ ] Crear cuenta en runpod.io y cargar $10
-- [ ] Crear Pod (RTX 3060 12 GB, 40 GB disco, template PyTorch)
-- [ ] Clonar el repo en el Pod
-- [ ] `pip install -r requirements.txt chatterbox-tts`
+- [x] Crear cuenta en runpod.io y cargar $10
+- [x] Identificar imagen correcta: `runpod/pytorch:1.1.0-cu1300-torch260-ubuntu2404`
+- [ ] Verificar CUDA en Pod fresco (cuInit=0, torch.cuda.is_available()=True)
+- [ ] Clonar el repo en el Pod + `pip install chatterbox-tts`
+- [ ] Probar Chatterbox con 1 frase corta (es, en, pt)
 - [ ] Subir gameplays a storage/raw_gameplay/
-- [ ] Subir voces de referencia a storage/voces/
-- [ ] Probar Chatterbox con 1 frase corta
+- [ ] Pipeline completo con 1 historia corta

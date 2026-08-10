@@ -8,6 +8,7 @@ storage/voices-v1.0.bin
 data/temas_pendientes.txt
 data/temas_usados.txt
 .env
+!storage/voces/
 !storage/voces/*.mp3
 *.mp3
 *.mp4
