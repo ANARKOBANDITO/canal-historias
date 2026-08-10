@@ -29,6 +29,10 @@ estado = {
     "ass_9": Path(f"output/subtitulos_ass/{nombre_base}_9x16.ass").exists(),
     "video_16": Path(f"output/videos/{nombre_base}_16x9.mp4").exists(),
     "video_9": Path(f"output/videos/{nombre_base}_9x16.mp4").exists(),
+    "tarjeta": Path(f"output/tarjetas/{nombre_base}_tarjeta.png").exists(),
+    "video_16_tarjeta": Path(f"output/videos/{nombre_base}_16x9_con_tarjeta.mp4").exists(),
+    "miniatura": Path(f"output/miniaturas/{nombre_base}_miniatura.png").exists(),
+    "shorts": bool(list(Path(f"output/shorts/").glob(f"{nombre_base}_shorts_*.mp4"))),
 }
 ```
 
@@ -50,7 +54,10 @@ Etapas en orden, cada una se salta si su salida ya existe:
 2. `python src/generar_subtitulos_ass.py --procesar`
 3. `python src/generar_subtitulos_ass.py --procesar --vertical`
 4. `python src/ensamblar_video.py --procesar --tambien-vertical`
-5. `python src/cortar_shorts.py --procesar`
+5. `python src/generar_tarjeta_reddit.py --procesar` (solo 16:9, requiere el video 16:9)
+6. `python src/generar_miniaturas.py --procesar`
+7. `python src/revisar_miniaturas.py --procesar`
+8. `python src/cortar_shorts.py --procesar --minutos 5 --idioma <idioma>`
 
 ### 4. Reportar
 

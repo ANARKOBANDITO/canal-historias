@@ -1,6 +1,6 @@
 # RESUMEN COMPLETO DEL PROYECTO `canal-historias`
 
-> Actualizado al cierre de la sesion del 07/08. Este documento es la fuente de
+> Actualizado al cierre de la sesion del 10/08. Este documento es la fuente de
 > verdad para retomar el proyecto en una terminal NUEVA. Leo junto con
 > `NEXT_STEPS.md` (pendientes) y `AGENTS.md` (convenciones).
 
@@ -8,14 +8,15 @@
 
 ## 1. QUE ES
 
-Pipeline automatizado que genera **guiones narrados en espanol** estilo
-"historias de reddit" (confesiones en primera persona) y los convierte en
-**video**: audio (TTS local Kokoro) + subtitulos karaoke (ASS) + gameplay de
-fondo. Destino: YouTube (16:9) y TikTok/Shorts/Reels (9:16).
+Pipeline automatizado que genera **guiones narrados en primera persona** estilo
+"historias de reddit" (confesiones) y los convierte en **video**: audio (TTS
+multi-motor) + subtitulos karaoke (ASS) + gameplay de fondo. Destino: YouTube
+(16:9) y TikTok/Shorts/Reels/IG (9:16 dividido en partes de ~5 min con CTA).
 
-**Estado actual:** pipeline completo y probado de punta a punta. Fase de
-subtitulos terminada con el estilo visual correcto. Pendiente: descargar
-gameplay real y decidir motor TTS de produccion.
+**Estado actual:** pipeline CPU completo probado. Se agregaron tarjeta Reddit
+(16:9), miniaturas (Qwen + Pillow), revision con MiniMax M3 y CTA de partes.
+RunPod Pods GPU descartados (driver 580 roto). Vast.ai es el proveedor GPU elegido.
+Nombre del canal: **r/HopStories**.
 
 ---
 
@@ -30,16 +31,19 @@ canal-historias/
 ├── .opencode/
 │   ├── agents/
 │   │   ├── scriptwriter.md    # Subagente fase guiones
-│   │   └── video-producer.md  # Subagente fase audio/video
+│   │   └── video-producer.md  # Subagente fase audio/video/miniaturas
 │   ├── rules/
 │   │   ├── espanol.md
 │   │   ├── deepseek-api.md
 │   │   ├── ffmpeg-windows.md
-│   │   └── kokoro-tts.md
+│   │   ├── kokoro-tts.md
+│   │   ├── tts-chatterbox.md  # Motores TTS + estrategia serverless/Vast.ai
+│   │   └── imagenes-canal.md  # Tarjeta Reddit, miniaturas, avatar, licencias
 │   └── skills/
 │       ├── recover-batch/     # Recuperar lote de guiones interrumpido
 │       ├── recover-video/     # Recuperar fase video interrumpida
-│       └── renderear-shorts/  # Guia 16:9 -> 9:16
+│       ├── renderear-shorts/  # Guia 16:9 -> 9:16 con CTA
+│       └── producir-semana/   # Cadencia semanal (3 videos, opcion A)
 ├── src/
 │   ├── utilidades.py              # normalizar_nombre() (compartido)
 │   ├── generar_temas.py           # Premisas DeepSeek + deduplicacion
@@ -48,32 +52,42 @@ canal-historias/
 │   ├── variacion_narrativa.py     # Rota gancho/desenlace
 │   ├── firma_editorial.py         # Sello de cierre del canal
 │   ├── banco_temas.py             # Dedupe de temas (vectores locales)
-│   ├── buscar_gameplay.py         # Busca gameplay en YouTube y lo agrega a gameplay_urls.txt
-│   ├── descargar_gameplay.py      # Descarga gameplay (yt-dlp + aria2c + .txt)
-│   ├── generar_audio.py           # Audio Kokoro (em_alex/ef_dora)
+│   ├── buscar_gameplay.py         # Busca gameplay libre en YouTube (solo URLs)
+│   ├── descargar_gameplay.py      # Descarga gameplay (yt-dlp + aria2c)
+│   ├── generar_referencias.py     # Voces de referencia edge-tts para Chatterbox
+│   ├── generar_audio.py           # Audio (Kokoro/edge/chatterbox/chatterbox-api)
 │   ├── generar_subtitulos_ass.py  # whisper -> ASS karaoke
 │   ├── ensamblar_video.py         # Audio+ASS+gameplay -> video 16:9/9:16
-│   ├── cortar_shorts.py           # Video 9:16 -> clips
+│   ├── dividir_audio.py           # Audio -> episodios ~5 min (ffmpeg copy)
+│   ├── pipeline_gpu.py            # Orquestador del Pod GPU
+│   ├── cortar_shorts.py           # 9:16 -> partes ~5 min con CTA
+│   ├── generar_tarjeta_reddit.py  # Tarjeta estilo Reddit al inicio del 16:9
+│   ├── generar_miniaturas.py      # Miniaturas (Qwen-Image-Edit + Pillow)
+│   ├── concatenar_miniatura.py    # Composicion final miniatura
+│   ├── revisar_miniaturas.py      # Review con MiniMax M3
+│   ├── generar_cta_parte.py       # CTA "like para la parte N"
 │   ├── estadisticas.py            # Dashboard
 │   ├── validar_guiones.py         # QA pre-locucion
 │   ├── limpiar_banco.py           # Gestiona banco de temas
-│   ├── renombrar_guiones.py       # Normaliza nombres
-│   ├── verificar_entorno.py       # Chequea dependencias
-│   ├── pipeline_completo.py       # Todo el flujo en cascada
-│   └── limpiar_output.py          # Borra temporales
+│   └── renombrar_guiones.py       # Normaliza nombres
 ├── data/
 │   ├── temas_pendientes.txt       # Cola de temas
 │   ├── temas_usados.txt           # Registro historico
 │   ├── banco_temas.pkl            # Vectores de temas usados
-│   └── gameplay_urls.txt          # Lista de URLs de gameplay (una por linea)
+│   └── gameplay_urls.txt          # Lista de URLs de gameplay
 ├── output/
-│   ├── guiones_listos/            # 12 guiones (.txt normalizados 001_...)
-│   ├── audio/                     # Locuciones .mp3 (vacio tras limpieza)
-│   ├── subtitulos_ass/            # ASS karaoke 16:9 y 9:16 (vacio tras limpieza)
-│   ├── videos/                    # Videos finales (vacio tras limpieza)
-│   └── shorts/                    # Clips para Shorts (vacio tras limpieza)
+│   ├── guiones_listos/            # 12 guiones (.txt normalizados)
+│   ├── audio/                     # Locuciones .mp3
+│   ├── subtitulos_ass/            # ASS karaoke 16:9 y 9:16
+│   ├── videos/                    # Videos finales (_16x9.mp4 y _9x16.mp4)
+│   ├── tarjetas/                  # Tarjeta Reddit (PNG)
+│   ├── miniaturas/                # Miniaturas finales (PNG)
+│   ├── cta/                       # Overlay + audio del CTA
+│   └── shorts/                    # Partes 9:16 con CTA
 └── storage/
-    ├── raw_gameplay/              # Gameplay loops (vacio, por descargar)
+    ├── raw_gameplay/              # Gameplay loops (5 videos, 3.14 GB)
+    ├── voces/                     # Referencias de voz Chatterbox (es, en, pt)
+    ├── avatar/                    # Avatar del canal (pendiente de generar)
     ├── kokoro-v1.0.onnx           # Modelo Kokoro (310 MB)
     ├── voices-v1.0.bin            # Voces Kokoro (27 MB)
     └── Montserrat-Bold.ttf        # Fuente de subtitulos
@@ -90,19 +104,22 @@ canal-historias/
 3. python src/buscar_gameplay.py --libre --guardar "no copyright gameplay"
                                                    -> data/gameplay_urls.txt (solo URLs)
 4. python src/descargar_gameplay.py data/gameplay_urls.txt  -> storage/raw_gameplay/
-5. python src/generar_audio.py --cantidad 5        -> output/audio/*.mp3 (Kokoro)
+5. python src/generar_audio.py --cantidad 5        -> output/audio/*.mp3
+   (mes 1: --motor chatterbox-api; mes 2+: --motor chatterbox en Vast.ai)
 6. python src/generar_subtitulos_ass.py --procesar            -> ASS 16:9
 7. python src/generar_subtitulos_ass.py --procesar --vertical -> ASS 9:16
 8. python src/ensamblar_video.py --procesar --tambien-vertical
                                                    -> output/videos/*_16x9.mp4 y *_9x16.mp4
-9. python src/cortar_shorts.py --procesar          -> output/shorts/
+9. python src/generar_tarjeta_reddit.py --procesar --usuario "r/HopStories"
+                                                   -> tarjeta Reddit SOLO en 16:9
+10. python src/generar_miniaturas.py --procesar    -> output/miniaturas/
+11. python src/revisar_miniaturas.py --procesar    -> review MiniMax M3
+12. python src/cortar_shorts.py --procesar --minutos 5 --idioma es
+                                                   -> output/shorts/ (partes ~5 min + CTA)
 ```
 
-**Alternativa en un comando:**
-`python src/pipeline_completo.py --cantidad 5 --genero hombre`
-
-**Diagnostico del entorno:**
-`python src/verificar_entorno.py`
+**Alternativa en un comando (con GPU):**
+`python src/pipeline_gpu.py --cantidad 5`
 
 ---
 
@@ -114,12 +131,27 @@ canal-historias/
 - max_tokens minimos: gancho 200, premisas 400, capitulos 2000, esquemas 4000.
 - API key: `DEEPSEEK_API_KEY`.
 
-### Audio (Kokoro / edge-tts / Chatterbox)
+### Audio (Kokoro / edge-tts / Chatterbox / Chatterbox API)
 - **Kokoro (CPU local):** voces `em_alex` (hombre) / `ef_dora` (mujer). Modelos en `storage/`.
 - **edge-tts (nube, rapido):** `--motor edge`, voces `es-MX-JorgeNeural` / `es-MX-DaliaNeural`.
 - **Chatterbox (GPU, voice cloning):** `--motor chatterbox --idioma en`. Multilingual V3,
   500M params, ~6-8 GB VRAM. Necesita voces de referencia en `storage/voces/`.
-  Generar con `generar_referencias.py`.
+  Generar con `generar_referencias.py`. Corre en Vast.ai (mes 2+).
+- **Chatterbox API (serverless RunPod):** `--motor chatterbox-api --idioma en`.
+  $0.001/seg, voice cloning via `voice_url`. Mes 1 (quema saldo RunPod).
+
+### Tarjeta Reddit (16:9 SOLO)
+- `generar_tarjeta_reddit.py`: tarjeta estilo publicacion Reddit (avatar + `r/HopStories`
+  + texto del gancho) superpuesta al inicio del 16:9 mientras dura el gancho (~8-12% del
+  audio, max 12s). El 9:16 NO lleva tarjeta.
+
+### Miniaturas y avatar
+- `generar_miniaturas.py`: Qwen-Image-Edit-2511 (Apache 2.0, comercial OK) en Vast.ai
+  (`--backend local`) para la escena + composicion con avatar/titulo (Pillow).
+- `revisar_miniaturas.py`: evalua con MiniMax M3 (puntaje + clickability + sugerencia).
+- Avatar del canal: conejito-robot estilo Snoo adaptado, 10 expresiones, PNG transparente
+  en `storage/avatar/`. Se genera UNA vez con Nano Banana 2 (A6000 48GB).
+- **LICENCIAS:** FLUX.1 Kontext dev = NON-COMMERCIAL (NO usar). Qwen y Nano Banana = OK comercial.
 
 ### Subtitulos (ASS karaoke) - ESTILO FINAL
 - Montserrat-Bold, blanco + borde negro, karaoke `\k` por palabra (activa en amarillo).
@@ -164,41 +196,53 @@ canal-historias/
 | Banjo de temas | 20 temas vectorizados |
 | Audio generado | 2 (001 + 011, Kokoro, 16.3 y 4.1 min) |
 | ASS generados | 4 (16:9 y 9:16 para 001 y 011) |
-| Videos generados | 4 de prueba (3 min c/u: 001/011 x 16:9/9:16, gameplay_003) |
+| Videos generados | 001 (16:9 y 9:16, gameplay real) + pruebas de 011 |
 | Gameplay en storage | 5 (3.14 GB, duraciones 10-31 min) |
 | URLs de gameplay en data | 7 (en `data/gameplay_urls.txt`) |
-| Pipeline probado | ✅ Con gameplay real (subtitulos sobre fondo de juego) |
+| CTA de partes | Probado: overlay PNG + audio edge-tts en `output/cta/` |
+| Tarjeta Reddit | Probado: PNG renderizado (falta avatar del canal) |
+| Pipeline probado | ✅ Guiones -> audio -> subs -> video -> shorts con CTA |
 
 ---
 
 ## 6. PENDIENTES (ver NEXT_STEPS.md para detalle)
 
-1. Descargar gameplay real (internet lenta -> usar `data/gameplay_urls.txt` + aria2c).
-   Ya hay 7 URLs candidatas anotadas; revisar licencias y ejecutar el downloader.
-2. Prueba visual final con gameplay real (subtitulos sobre fondo de juego).
-3. Decision del motor TTS de produccion (actual: Kokoro gratis; alternativas evaluadas:
-   ElevenLabs, Fish Audio, Chatterbox).
+1. **Avatar del canal**: generar con Nano Banana 2 (A6000 48GB) + 10 expresiones,
+   PNG transparente en `storage/avatar/`. Requiere la foto del conejito del usuario.
+2. **Vast.ai**: crear cuenta, cargar credito, probar CUDA (filtro driver < 580).
+3. **Chatterbox**: probar en Vast.ai local (voice cloning) y/o serverless API.
+4. **Miniaturas**: probar Qwen-Image-Edit con 1 guion de referencia.
+5. **Revision M3**: configurar cuando el usuario tenga creditos/API de MiniMax M3.
+6. **Probar el flujo semanal completo** (3 videos) una vez Vast.ai funcione.
 
 ---
 
-## 7. COSTOS (referencia, ~8 guiones/mes)
+## 7. COSTOS (referencia, ~12 videos/mes = 3/semana)
 
 | Camino | TOTAL/mes |
 |---|---|
-| Kokoro puro (actual) | ~$6 (VPS) |
-| Chatterbox + GPU on-demand | ~$8-10 |
-| Fish Audio Plus | ~$17 |
-| ElevenLabs Creator | ~$28 |
+| Mes 1: TTS serverless (quema saldo RunPod $14.45) + Vast.ai (whisper+video) | ~$1.60 |
+| Mes 2+: Todo en Vast.ai (TTS local + whisper + video) | ~$5 |
+| Alternativa: serverless TTS indefinido | ~$12+ |
 
-DeepSeek (guiones): ~$1/mes para 8 guiones de 20 min.
+Desglose mes 2+ (12 videos): DeepSeek ~$1.50 + GPU Vast.ai RTX 3090 ~$3.00
++ miniaturas/revision ~$0.15. Avatar (Nano Banana, A6000) = ~$0.50 una vez.
+El saldo de RunPod se quema SIEMPRE primero en TTS serverless (costo hundido).
 
 ---
 
 ## 8. DECISIONES TOMADAS (para no repetir)
 
-- **Motor actual:** Kokoro (gratis, local, `em_alex`/`ef_dora`). edge-tts como respaldo rapido.
+- **Nombre del canal:** `r/HopStories` (avatar conejito-robot + formato Reddit).
+- **Motor TTS:** mes 1 = `chatterbox-api` (serverless, quema saldo RunPod);
+  mes 2+ = `chatterbox` local en Vast.ai (voice cloning). Kokoro/edge como respaldo.
+- **Proveedor GPU:** Vast.ai (RTX 3090 ~$0.12/hr). RunPod Pods DESCARTADOS
+  (driver 580 + toolkit 1.19.1 rompen CUDA en contenedores).
 - **Subtitulos:** ASS karaoke, estilo final definido (fuente 48/96, frases 2.5s, centrado vertical).
-- **Reddit:** NO se usa la API de Reddit ni historias reales. Solo historias "tipo reddit" generadas.
-- **Scripts heredados eliminados:** adaptar_guion, buscar_historias_reddit, embeddings_utils, indexar_historias.
+- **Tarjeta Reddit:** SOLO en el 16:9, al inicio mientras dura el gancho. Usuario `r/HopStories`.
+- **9:16:** sin tarjeta; gameplay vertical + subtitulos; cortes en fin de capitulo;
+  CTA "like para la parte N" (visual + narrado) al final de cada parte.
+- **Miniaturas:** Qwen-Image-Edit-2511 (Apache 2.0, comercial OK). Review con MiniMax M3.
+- **LICENCIAS:** FLUX.1 Kontext dev NON-COMMERCIAL → NO usar en canal monetizado.
+- **Reddit:** NO se usa la API de Reddit ni historias reales. Solo "tipo reddit" generadas.
 - **Normalizacion de nombres:** centralizada en `src/utilidades.py`.
-- **aria2c:** instalado en Windows para descargas paralelas de gameplay.

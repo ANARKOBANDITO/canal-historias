@@ -6,7 +6,11 @@ kokoro-onnx
 soundfile
 faster-whisper
 yt-dlp
+pillow
 # GPU / TTS (solo en Pod con GPU)
 # chatterbox-tts
 # torch
 # torchaudio
+# GPU / imagenes (solo Vast.ai)
+# diffusers
+# transformers

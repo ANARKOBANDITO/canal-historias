@@ -49,6 +49,16 @@ try:
 except ImportError:
     HAY_CHATTERBOX = False
 
+# ── Chatterbox API (serverless RunPod) ───────────────────────
+try:
+    import requests
+    HAY_REQUESTS = True
+except ImportError:
+    HAY_REQUESTS = False
+
+# Endpoint serverless Chatterbox Turbo (RunPod)
+CHATTERBOX_API_URL = "https://api.runpod.ai/v2/chatterbox-turbo/runsync"
+
 # ── Carpetas ─────────────────────────────────────────────────
 CARPETA_GUIONES = Path("output/guiones_listos")
 CARPETA_AUDIO = Path("output/audio")
@@ -74,7 +84,7 @@ VOZ_REFERENCIA_POR_IDIOMA = {
     "en": "referencia_en.mp3",
     "pt": "referencia_pt.mp3",
 }
-DEVICE_CHATTERBOX = "cuda" if torch.cuda.is_available() else "cpu"
+DEVICE_CHATTERBOX = "cuda" if (HAY_CHATTERBOX and torch.cuda.is_available()) else "cpu"
 
 # ── Singletons ───────────────────────────────────────────────
 _instancia_kokoro = None
@@ -158,6 +168,55 @@ def _generar_chatterbox(texto: str, idioma: str, ruta_mp3: Path,
 
 
 # ═══════════════════════════════════════════════════════════════
+#  Chatterbox API (serverless RunPod, voice cloning via URL)
+# ═══════════════════════════════════════════════════════════════
+
+def _generar_chatterbox_api(texto: str, idioma: str, ruta_mp3: Path,
+                            ruta_ref: Path | None = None,
+                            voice_url: str | None = None) -> None:
+    """Genera audio con la API serverless Chatterbox Turbo de RunPod.
+    $0.001/seg. El audio_url expira a los 7 dias, se descarga al momento."""
+    import os
+    import urllib.request
+
+    api_key = os.environ.get("RUNPOD_API_KEY")
+    if not api_key:
+        raise RuntimeError("RUNPOD_API_KEY no configurada. Exportala antes de usar --motor chatterbox-api.")
+
+    # voice_url explicita o subir la referencia a GitHub raw (por convencion)
+    ref_url = voice_url
+    if not ref_url and ruta_ref and ruta_ref.exists():
+        # TODO: subir storage/voces/ a un repo publico y construir la URL raw.
+        # Por defecto se usa voz preset si no hay URL.
+        print(f"  [voice cloning] Usar voice_url con {ruta_ref.name}. Se usara voz default por ahora.")
+
+    payload = {
+        "input": {
+            "prompt": texto,
+            "voice": "lucy",  # voz preset (fallback)
+            "format": "wav",
+        }
+    }
+    if ref_url:
+        payload["input"]["voice_url"] = ref_url
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    resp = requests.post(CHATTERBOX_API_URL, json=payload, headers=headers, timeout=300)
+    resp.raise_for_status()
+    data = resp.json()
+
+    if data.get("status") != "COMPLETED":
+        raise RuntimeError(f"Chatterbox API fallo: {data}")
+
+    audio_url = data["output"]["audio_url"]
+    urllib.request.urlretrieve(audio_url, ruta_mp3)
+    print(f"  [chatterbox-api] cost: ${data['output'].get('cost', 0):.4f}")
+
+
+# ═══════════════════════════════════════════════════════════════
 #  Lectura de guiones
 # ═══════════════════════════════════════════════════════════════
 
@@ -203,7 +262,7 @@ def main():
     parser.add_argument("--genero", choices=["hombre", "mujer"], default="mujer",
                         help="Genero del narrador (kokoro / edge-tts)")
     parser.add_argument("--voz", type=str, default=None, help="Voz especifica (ignora --genero)")
-    parser.add_argument("--motor", choices=["kokoro", "edge", "chatterbox"], default="kokoro",
+    parser.add_argument("--motor", choices=["kokoro", "edge", "chatterbox", "chatterbox-api"], default="kokoro",
                         help="Motor TTS (default: kokoro)")
     parser.add_argument("--idioma", choices=["es", "en", "pt"], default=None,
                         help="Idioma del contenido (chatterbox). Si no se pasa, se lee de [IDIOMA:] en el guion")
@@ -269,6 +328,16 @@ def main():
                 ruta_ref = None
             print(f"  [IDIOMA: {idioma_efectivo}]")
             _generar_chatterbox(texto, idioma_efectivo, ruta_mp3, ruta_ref)
+
+        elif args.motor == "chatterbox-api":
+            if not HAY_REQUESTS:
+                print("  requests no esta instalado. pip install requests")
+                return
+            ruta_ref = CARPETA_VOCES / VOZ_REFERENCIA_POR_IDIOMA.get(idioma_efectivo, "")
+            if not ruta_ref.exists():
+                ruta_ref = None
+            print(f"  [IDIOMA: {idioma_efectivo}] (serverless RunPod)")
+            _generar_chatterbox_api(texto, idioma_efectivo, ruta_mp3, ruta_ref)
 
         print(f"  Audio : {ruta_mp3} ({ruta_mp3.stat().st_size / 1024:.0f} KB)")
 

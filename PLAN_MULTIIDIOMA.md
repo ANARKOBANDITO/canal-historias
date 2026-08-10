@@ -1,9 +1,12 @@
 # PLAN: Expansión multi-idioma del pipeline `canal-historias`
 
-> **Estado: PENDIENTE.** Este documento es una guía de arquitectura para cuando
-> se decida implementar canales del mismo nicho en otros idiomas (ademas del
-> canal en español ya en marcha). No ejecutar estos cambios hasta que se
-> confirme explicitamente que se quiere empezar esta fase.
+> **Estado: EN PRODUCCION PARCIAL.** El canal ya produce multi-idioma de
+> forma operativa: **3 videos/semana = 2 en ingles + 1 en español o portugues
+> (alternando)**. El pipeline acepta `--idioma es|en|pt` en audio, whisper y
+> subtitulos. Este documento describe la fase FUTURA de separacion estructural
+> completa por idioma (prompts nativos, carpetas `data/<idioma>/`,
+> `output/<idioma>/`, banco de deduplicacion independiente). No ejecutar la
+> migracion estructural hasta que se confirme explicitamente.
 
 ---
 
@@ -115,3 +118,21 @@ canal-historias/
 - `python src/generar_lote.py --idioma pt` genera premisas y guiones nativos
   en portugues, usando su propio banco de deduplicacion y su propia carpeta
   de salida, sin tocar ni mezclar los datos de `es/`.
+
+---
+
+## 7. Estado operativo actual (10/08)
+
+El multi-idioma YA esta activo a nivel de audio/video sin separacion estructural:
+
+| Capa | Estado | Como |
+|---|---|---|
+| Guiones | `--idioma` no implementado en generar_historia/lote | Se pide tema en el idioma deseado |
+| Audio | ✅ `generar_audio.py --idioma en|es|pt` | Chatterbox (voice cloning) o edge-tts |
+| Whisper | ✅ `generar_subtitulos_ass.py --idioma en|es|pt|auto` | Transcripcion multi-idioma |
+| Subtitulos | ✅ Mismo `--idioma` | ASS karaoke en el idioma |
+| Cadencia | ✅ 3/semana = 2 EN + 1 ES/PT alternando | Plan maestro (AGENTS.md) |
+
+La separacion estructural de este plan (prompts nativos + carpetas por idioma
++ banco dedupe independiente) queda pendiente y se decide por separado si se
+necesita. No es bloqueante para la produccion actual.

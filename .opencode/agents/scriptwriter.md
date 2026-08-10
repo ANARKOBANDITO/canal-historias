@@ -59,6 +59,16 @@ Ejemplo: `python src/generar_temas.py --cantidad 10`
 
 3. **Un solo guion**: `python src/generar_historia.py "tema aqui" --genero mujer --minutos 30`
 
+## Cadencia semanal (plan maestro)
+
+- **3 guiones/semana**: 2 en ingles + 1 en español o portugues (alternando).
+- Cada guion lleva metadatos `[GENERO: ...]` e `[IDIOMA: en|es|pt]` (el audio y whisper
+  los leen automaticamente).
+- **El gancho (primer parrafo) es CRITICO**: se usa para la tarjeta Reddit al inicio del
+  video 16:9. Debe ser intrigante y autocontenido (5-15 seg de lectura).
+- Los guiones se dividen en capitulos/parrafos: el corte del 9:16 en partes de ~5 min
+  usa los finales de capitulo como puntos de corte.
+
 ## API de DeepSeek
 
 - Modelo: `deepseek-v4-flash` en `https://api.deepseek.com/v1`

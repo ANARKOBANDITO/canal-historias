@@ -16,3 +16,9 @@ Puntos importantes:
 - Para loop infinito de gameplay: `-stream_loop -1`.
 - Si no hay gameplay, la fuente `color=black` debe usarse con `-stream_loop -1`
   o la duracion correcta para que el video dure igual que el audio.
+- Overlay de imagen (tarjeta Reddit, CTA) al inicio del video: usar
+  `-filter_complex` con `fade=t=in:alpha=1` + `fade=t=out:alpha=1` sobre la
+  imagen y `overlay=0:0:enable='between(t,0,DURACION)'`. Siempre agregar
+  `-nostdin` para que ffmpeg no cuelgue esperando input.
+- Para re-encode del overlay usar `-c:v libx264 -preset medium -crf 21`.
+  Con `--segundos N` (via `-t N`) se puede limitar a pruebas rapidas.
