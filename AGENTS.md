@@ -181,6 +181,20 @@ python src/dividir_audio.py --procesar
 
 - Siempre verificar que `DEEPSEEK_API_KEY` este configurada antes de ejecutar.
 - Los scripts de generacion hacen multiples llamadas a la API (gancho + esquema + 5-9 capitulos).
+- **IMPORTANTE: RunPod Pods.** El driver 580.95.05 del host NO funciona con CUDA en
+  contenedores de ningun tipo (7 intentos fallidos, imagenes CUDA 12.x y 13.0, tiers
+  COMMUNITY y SECURE). Ver `data/INFORME_RUNPOD_FALLIDO.txt` para el detalle completo.
+  La API serverless Chatterbox Turbo SI funciona ($0.001/seg).
+- **IMPORTANTE: Imagen GPU correcta.** Si se vuelve a intentar GPU en cualquier proveedor,
+  la imagen debe tener CUDA >= version del driver del host. Para RunPod driver 580:
+  `runpod/pytorch:1.0.2-cu1300-torch260-ubuntu2404` (CUDA 13.0 + torch 2.6.0).
+- **IMPORTANTE: Chatterbox.** `pip install chatterbox-tts` instala el paquete 0.1.7.
+  Import correcto: `from chatterbox.mtl_tts import ChatterboxMultilingualTTS`.
+  NO usar `from chatterbox_tts import ...`. Requiere torch==2.6.0.
+  Modelo en HF: `ResembleAI/chatterbox` (publico, NO gated, NO requiere token).
+- **IMPORTANTE: Verificar CUDA primero.** Antes de instalar cualquier cosa en un Pod
+  GPU, ejecutar: `python3 -c "import torch; print(torch.cuda.is_available())"`.
+  Si es False, no seguir. Terminar el Pod y buscar otro host/proveedor.
   Un guion de 20 minutos tarda ~2-3 minutos en generarse.
 - `generar_lote.py` vacia `data/temas_pendientes.txt` al terminar. Si se interrumpe, los temas
   ya procesados quedan en `data/temas_usados.txt` pero los pendientes **no se borran** hasta

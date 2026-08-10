@@ -1,45 +1,48 @@
 # NEXT STEPS — Pendientes del proyecto canal-historias
 
-> Leer este archivo PRIMERO al retomar el proyecto. Define que falta hacer.
+> Leer este archivo PRIMERO al retomar el proyecto.
 > Contexto completo en `RESUMEN_PROYECTO.md` y convenciones en `AGENTS.md`.
 
 ---
 
-## Estado de la ultima sesion (09/08)
+## Estado actual (10/08)
 
-- Pipeline completo probado de punta a punta con gameplay real (3 bugs ffmpeg corregidos).
-- 5 gameplays descargados (10-31 min, 3.14 GB), 7 URLs en `data/gameplay_urls.txt`.
-- **Fase 1 GPU/Chaterbox completada:** nuevos scripts (`generar_referencias.py`,
-  `dividir_audio.py`, `pipeline_gpu.py`), `generar_audio.py` con `--motor chatterbox`
-  + `--idioma`, NVENC auto-deteccion en `ensamblar_video.py`, whisper multi-idioma.
-- Voces de referencia generadas en `storage/voces/` (es-MX, en-US, pt-BR).
-- Plan GPU documentado en `PLAN_GPU_CHATTERBOX.md`.
-- **Pendiente Fase 2:** configurar Pod en RunPod y probar Chatterbox real.
+- Pipeline CPU completo probado (guiones + Kokoro + subtitulos + video + gameplay).
+- **RunPod Pods DESCARTADOS:** 7 intentos fallidos (ver `data/INFORME_RUNPOD_FALLIDO.txt`).
+  El nvidia-container-toolkit no inyecta librerias del host con el driver 580.
+- Codigo para Chatterbox GPU escrito (Fase 1), pero no se pudo probar en Pod.
+- API serverless Chatterbox Turbo de RunPod SI funciona (voice cloning probado).
+
+## PROXIMOS PASOS
+
+### 1. Investigar alternativa GPU (Vast.ai / similares)
+- Vast.ai: RTX 3080 Ti a ~$0.10-0.20/hr (interruptible), Docker, CUDA
+- Comparar con otras opciones (TensorDock, etc.)
+- Ver `PLAN_GPU_CHATTERBOX.md` actualizado.
+
+### 2. Opcion inmediata: API serverless Chatterbox Turbo
+- Ya probada y funcionando. $0.001/segundo.
+- Permite producir YA sin GPU Pod.
+- El saldo de RunPod ($14.45) cubre ~1 mes de TTS.
+
+### 3. Verificar Pod via CONSOLA web de RunPod (no REST API)
+- Posible issue: los Pods por API no ejecutan el toolkit correctamente.
+- Crear Pod desde console.runpod.io con template "RunPod PyTorch" oficial.
+
+### 4. Probar CUDA en otro proveedor
+- Una vez elegido el proveedor GPU, verificar CUDA ANTES de instalar nada.
+- Flujo: Pod nuevo -> nvidia-smi -> torch.cuda.is_available() -> instalar chatterbox.
 
 ---
 
-## PROXIMOS PASOS (en orden sugerido)
+## NOTAS DE CONTEXTO IMPORTANTES
 
-### 1. Fase 2 — Configurar Pod GPU (tarea del usuario)
-- Crear cuenta en runpod.io, cargar $10.
-- Crear Pod: RTX 3060 (12 GB), 40 GB disco, template PyTorch.
-- Clonar repo, `pip install -r requirements.txt chatterbox-tts`.
-- Subir gameplays y voces.
-- Ver `PLAN_GPU_CHATTERBOX.md` para el detalle completo.
-
-### 2. Probar Chatterbox en el Pod
-- Generar 1 frase de prueba por idioma, escuchar y ajustar.
-- Pipeline completo con 1 historia corta.
-- Medir tiempos reales vs estimaciones.
-
-### 3. Produccion multi-idioma
-- 4 historias/mes en ingles, 2 en portugues, 2 en espanol.
-- Pipeline semanal: 1-2 historias completas + shorts.
-
-### 4. Decision del motor TTS de produccion (resuelto)
-- Chatterbox Multilingual V3 + RTX 3060 GPU on-demand. Costo ~$4/mes total.
-- Alternativas descartadas: ElevenLabs (~$28/mes), Fish Audio (~$17/mes),
-  Kokoro puro (calidad de voz femenina insuficiente).
+- **RunPod Pods NO funcionan** con CUDA (driver 580.95.05, cuInit=999 en 7 intentos).
+- **API serverless SI funciona** (Chatterbox Turbo, $0.001/seg, voz clonada).
+- **Chatterbox-tts 0.1.7** requiere torch==2.6.0. Import correcto: `from chatterbox.mtl_tts import ChatterboxMultilingualTTS`.
+- **Imagen CUDA 13.0**: `runpod/pytorch:1.0.2-cu1300-torch260-ubuntu2404` (torch 2.6.0)
+- **Modelo HF**: ResembleAI/chatterbox (publico, no gated, NO requiere token).
+- **SSH RunPod**: solo funciona con -tt (interactivo), no comandos no-interactivos en Windows.
 
 ---
 
