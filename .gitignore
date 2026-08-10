@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+output/
+storage/raw_gameplay/
+storage/kokoro-v1.0.onnx
+storage/voices-v1.0.bin
+*.pkl
+data/temas_pendientes.txt
+data/temas_usados.txt
+.env
+*.mp3
+*.mp4
+*.wav
+*.aac
+*.ass

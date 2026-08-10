@@ -1,0 +1,12 @@
+openai
+sentence-transformers
+numpy
+edge-tts
+kokoro-onnx
+soundfile
+faster-whisper
+yt-dlp
+# GPU / TTS (solo en Pod con GPU)
+# chatterbox-tts
+# torch
+# torchaudio

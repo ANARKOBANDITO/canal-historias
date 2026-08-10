@@ -1,0 +1,18 @@
+# Una URL de gameplay por linea (lineas con # son comentarios).
+# Las URLs deben ser de videos que tengas autorizacion/licencia para usar.
+# Uso: python src/descargar_gameplay.py data/gameplay_urls.txt
+
+# Minecraft Parkour 7 Minutes Free To Use Gameplay 4K | 65 - GameplaysForFree
+https://www.youtube.com/watch?v=XBIaqOm0RKQ
+# RIDERS REPUBLIC GAMEPLAY PC | No Copyright Gameplay 4K 60fps | Free To Use | 5 - Dope Gameplays
+https://www.youtube.com/watch?v=GVgLf8ENBJo
+# Minecraft Parkour Gameplay No Copyright 4K | 76 - GameplaysForFree
+https://www.youtube.com/watch?v=Ys2B5CKxc50
+# Subway Surfers (2026) - Gameplay [4K 16x9] No Copyright - Subway Surfers
+https://www.youtube.com/watch?v=i0M4ARe9v0Y
+# Free To Use Gameplay | Haste | 4K | No Copyright Gameplay - Free To Use Gameplay
+https://www.youtube.com/watch?v=4vVJPXXZUq4
+# [FREE TO USE] 10 Minutes of Steep Gameplay - no commentary / no music / no HUD - joel
+https://www.youtube.com/watch?v=EnGiQrWBrko
+# BEST GTA 5 MEGA RAMP No Copyright Gameplay for TIKTOK & YOUTUBE 4K 60fps | 410 - Dope Gameplays
+https://www.youtube.com/watch?v=ZtLrNBdXT7M
