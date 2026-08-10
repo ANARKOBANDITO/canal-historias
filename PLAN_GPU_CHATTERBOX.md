@@ -45,22 +45,52 @@ El modelo es el mismo para los 3 idiomas (Multilingual V3, 500M params,
 
 ## 4. Proveedor GPU: Vast.ai (RunPod descartado)
 
-| Recurso | Especificacion | Costo |
-|---|---|---|
-| GPU | RTX 3080 Ti 12GB (interruptible) | ~$0.10-0.20/hr |
-| GPU | RTX 3090 24GB (interruptible) | ~$0.15-0.30/hr |
-| Almacenamiento | Por GB/mes | variable |
-| **Total estimado** | **~4-6 hrs/mes GPU** | **~$1-2/mes** |
+### Precios reales (2026-08-10, GPUs >= 12GB VRAM)
 
-**Por que NO RunPod:** Driver 580.95.05 del host + nvidia-container-toolkit no
-inyecta libs compatibles en contenedores (`/usr/local/nvidia/lib/` vacio).
-Esto causa `cuInit=999` (CUDA_ERROR_UNKNOWN) en TODAS las imagenes probadas
+| GPU | VRAM | Ofertas | Mediana/hr | Min/hr |
+|---|---|---|---|---|
+| RTX A4000 | 16GB | 187 | $0.10 | $0.033 |
+| RTX 3080 Ti | 12GB | 69 | $0.10 | $0.028 |
+| **RTX 3090** | **24GB** | **424** | **$0.117** | **$0.081** |
+| RTX 4070 Ti | 12GB | 23 | $0.07 | $0.08 |
+| RTX 4080 | 16GB | 30 | $0.13 | $0.067 |
+| RTX 4090 | 24GB | 632 | $0.27 | $0.097 |
+| RTX A5000 | 24GB | 31 | $0.17 | $0.071 |
+
+**Recomendado:** RTX 3090 (24GB) — 424 ofertas, ~$0.08-0.12/hr. Sweet spot.
+Chatterbox (6-8GB) + whisper (2-4GB) + NVENC con holgura.
+
+**Costo mensual estimado:** 4-6 hrs GPU + 50GB disco ≈ **$0.50-1.50/mes**
+(interruptible 50-80% mas barato; on-demand ~$0.50-1.00).
+
+### Por que NO RunPod
+
+Driver 580.95.05 del host + nvidia-container-toolkit no inyecta libs
+compatibles en contenedores (`/usr/local/nvidia/lib/` vacio). Esto causa
+`cuInit=999` (CUDA_ERROR_UNKNOWN) en TODAS las imagenes probadas
 (CUDA 12.4, 12.8, y 13.0 con driver match). 7 intentos, 7 fracasos.
-Costo de intentos fallidos: ~$0.30 total.
+Costo de intentos fallidos: ~$0.30 total. Ver `data/INFORME_RUNPOD_FALLIDO.txt`.
 
-**Por que Vast.ai:** Hosts comunitarios individuales con sus propias configuraciones.
-Sin el problema de toolkit de RunPod. Interruptible = 50-80% mas barato que on-demand.
-Soporta Docker + imagenes PyTorch + CUDA + NVENC.
+### Por que Vast.ai
+
+Hosts individuales con sus propias configuraciones de driver (heterogeneos).
+NO tienen el bug centralizado de toolkit de RunPod. Para Chatterbox necesitamos
+un host con driver >= la version CUDA de la imagen. Soporta Docker + imagenes
+PyTorch/CUDA + NVENC + SSH.
+
+### Pasos para Vast.ai
+
+1. Crear cuenta en vast.ai (email + verificar) → cargar $10-20 (credito prepago)
+2. Obtener API key en Account Settings
+3. Buscar instancia RTX 3090 en cloud.vast.ai (o via API)
+4. Usar imagen con CUDA 12.4+ y torch 2.6.0 (ej. `runpod/pytorch:1.0.2-cu1300-torch260-ubuntu2404`
+   o `nvidia/cuda:12.4.1-devel-ubuntu22.04` + instalar torch)
+5. Docker options: `--shm-size=32gb`
+6. **VERIFICAR CUDA ANTES DE INSTALAR NADA:**
+   `python3 -c "import torch; print(torch.cuda.is_available())"` → True
+7. Si True → clonar repo, `pip install chatterbox-tts`, pipeline completo
+8. Almacenamiento: disco de instancia + Cloud Sync (Backblaze B2 ~$0.005/GB/mes)
+   para modelos/gameplays entre sesiones
 
 **Respaldo inmediato (ya probado):** RunPod Chatterbox Turbo API serverless.
 $0.001/segundo, voice cloning, NO Pod ni CUDA.

@@ -195,6 +195,9 @@ python src/dividir_audio.py --procesar
 - **IMPORTANTE: Verificar CUDA primero.** Antes de instalar cualquier cosa en un Pod
   GPU, ejecutar: `python3 -c "import torch; print(torch.cuda.is_available())"`.
   Si es False, no seguir. Terminar el Pod y buscar otro host/proveedor.
+- **Vast.ai (nuevo proveedor GPU):** hosts heterogeneos, ~$0.08-0.12/hr RTX 3090.
+  Docker options: `--shm-size=32gb`. Verificar CUDA antes de instalar.
+  Cuenta: vast.ai, credito prepago, API key en Account Settings.
   Un guion de 20 minutos tarda ~2-3 minutos en generarse.
 - `generar_lote.py` vacia `data/temas_pendientes.txt` al terminar. Si se interrumpe, los temas
   ya procesados quedan en `data/temas_usados.txt` pero los pendientes **no se borran** hasta
