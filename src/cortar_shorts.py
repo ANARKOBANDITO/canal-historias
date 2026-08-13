@@ -204,24 +204,32 @@ def _aplicar_cta(ruta_clip: Path, ruta_out: Path, siguiente_parte: int, idioma: 
     duracion_cta = _obtener_duracion_video(ruta_cta_mp3) if ruta_cta_mp3.exists() else 0.0
     overlay_start = max(0, duracion_clip - duracion_cta - 0.5)
 
+    # Inputs: [0]=clip, [1]=audio cta (si existe), [2]=overlay png (si existe)
     args = [FFMPEG, "-y", "-i", str(ruta_clip)]
+    idx_png = None
     if ruta_cta_mp3.exists():
         args += ["-i", str(ruta_cta_mp3)]
     if ruta_cta_png.exists():
         args += ["-i", str(ruta_cta_png)]
-        vf = f"[2:v]format=rgba,scale=1080:300,setpts=PTS-STARTPTS+{overlay_start}/TB[cta];[0:v][cta]overlay=0:0:shortest=1"
-        args += ["-filter_complex", vf, "-map", "0:v"]
+        idx_png = 2 if ruta_cta_mp3.exists() else 1
+
+    fc = []
+    maps = []
+    if ruta_cta_png.exists():
+        fc.append(f"[{idx_png}:v]format=rgba,scale=1080:300,setpts=PTS-STARTPTS+{overlay_start}/TB[cta];[0:v][cta]overlay=0:0:shortest=1[vout]")
+        maps.append("[vout]")
     else:
-        args += ["-map", "0:v"]
-    args += ["-map", "0:a"]
+        maps.append("0:v")
     if ruta_cta_mp3.exists():
-        args += ["-i", ""]  # noop para mantener indices; se rehace abajo
-        # rehacer con amix
-        del args[-1]
-        args += ["-filter_complex", f"[0:a]volume=1.0[a1];[1:a]adelay={int(overlay_start * 1000)}|{int(overlay_start * 1000)}[a2];[a1][a2]amix=inputs=2:duration=first:dropout_transition=3[aout]"]
-        args += ["-map", "[aout]"]
+        fc.append(f"[0:a]volume=1.0[a1];[1:a]adelay={int(overlay_start * 1000)}|{int(overlay_start * 1000)}[a2];[a1][a2]amix=inputs=2:duration=first:dropout_transition=3[aout]")
+        maps.append("[aout]")
     else:
-        args += ["-map", "0:a"]
+        maps.append("0:a")
+
+    if fc:
+        args += ["-filter_complex", ";".join(fc)]
+    for m in maps:
+        args += ["-map", m]
     args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-c:a", "aac", "-b:a", "128k", str(ruta_out)]
     subprocess.run(args, capture_output=True, check=True)
 

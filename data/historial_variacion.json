@@ -1,10 +1,16 @@
 {
   "ganchos": [
     "in_medias_res",
-    "dato_shockeante"
+    "dato_shockeante",
+    "pregunta_retorica",
+    "confesion_directa",
+    "advertencia_al_oyente"
   ],
   "desenlaces": [
     "final_abierto",
-    "giro_ironico"
+    "giro_ironico",
+    "justicia_poetica",
+    "final_agridulce",
+    "resolucion_calmada"
   ]
 }

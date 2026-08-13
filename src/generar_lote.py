@@ -14,6 +14,7 @@ Requisitos:
 """
 
 import argparse
+import sys
 from pathlib import Path
 
 from generar_historia import generar_historia_completa, CARPETA_SALIDA, PALABRAS_POR_MINUTO
@@ -31,9 +32,16 @@ def _nombre_archivo_valido(texto: str) -> str:
 
 
 def main():
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
     parser = argparse.ArgumentParser(description="Genera un guion por cada tema pendiente, en lote.")
     parser.add_argument("--genero", choices=["hombre", "mujer"], default="mujer")
     parser.add_argument("--minutos", type=int, default=30)
+    parser.add_argument("--idioma", choices=["es", "en", "pt"], default="es",
+                        help="Idioma nativo de los guiones (default: es)")
     args = parser.parse_args()
 
     if not ARCHIVO_PENDIENTES.exists():
@@ -49,11 +57,11 @@ def main():
 
     for i, tema in enumerate(temas, 1):
         print(f"\n=== Historia {i}/{len(temas)}: {tema[:70]} ===")
-        gancho, historia = generar_historia_completa(tema, args.genero, args.minutos, referencia_manual=None)
+        gancho, historia = generar_historia_completa(tema, args.genero, args.minutos, referencia_manual=None, idioma=args.idioma)
 
         guion_final = f"{gancho}\n\n---\n\n{historia}"
         guion_final = agregar_firma(guion_final)
-        guion_final = f"[GENERO: {args.genero}]\n\n{guion_final}"
+        guion_final = f"[GENERO: {args.genero}]\n[IDIOMA: {args.idioma}]\n\n{guion_final}"
         nombre_archivo = _nombre_archivo_valido(tema) + ".txt"
         (CARPETA_SALIDA / nombre_archivo).write_text(guion_final, encoding="utf-8")
 

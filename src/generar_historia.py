@@ -22,12 +22,14 @@ Requisitos:
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
 from openai import OpenAI
 
 from variacion_narrativa import elegir_gancho, elegir_desenlace
 from firma_editorial import agregar_firma
+from prompts import cargar_idioma, genero_en_idioma
 
 API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 BASE_URL = "https://api.deepseek.com/v1"
@@ -57,29 +59,12 @@ def _leer_referencias(referencia_manual: str | None) -> str:
     return ""
 
 
-def generar_gancho(tema: str, genero: str, referencias: str) -> str:
+def generar_gancho(tema: str, genero: str, referencias: str, prompts=None, idioma: str = "es") -> str:
     cliente = _cliente()
-    system = f"""
-Sos un experto en retencion de audiencia para TikTok, Shorts y Reels.
-Tu unico trabajo es escribir el GANCHO de apertura de un video de
-"historias de reddit": las primeras palabras que determinan si el
-espectador se queda o hace scroll.
-
-El gancho NO cuenta la historia completa. Es un cebo emocional que
-combina uno o mas de estos elementos:
-- Una pregunta que DESESPERA por ser respondida
-- Un detalle visual o sensorial shockeante que intrigue al instante
-- Una contradiccion o paradoja que no cierre y obligue a escuchar
-- Una confesion personal que genere identificacion inmediata
-
-Reglas:
-- Maximo 35 palabras (5 a 15 segundos hablados).
-- Narrador en primera persona, genero {genero}.
-- JAMAS reveles el final ni el giro principal.
-- El tono debe ser INTIMO, como si le estuvieras contando un secreto a
-  tu mejor amigo y no pudieras esperar a que termine de escuchar.
-- Devolve unicamente el texto del gancho, sin comillas ni titulos.
-"""
+    if prompts is None:
+        prompts = cargar_idioma(idioma)
+    genero_nativo = genero_en_idioma(idioma, genero)
+    system = prompts.system_gancho(genero_nativo)
     user = f"Tema de la historia: {tema}"
     gancho_info = elegir_gancho()
     user += f"\n\n{gancho_info['instruccion']}"
@@ -96,21 +81,13 @@ Reglas:
     return respuesta.choices[0].message.content.strip()
 
 
-def generar_esquema(tema: str, genero: str, minutos: int, referencias: str) -> list[str]:
+def generar_esquema(tema: str, genero: str, minutos: int, referencias: str, prompts=None, idioma: str = "es") -> list[str]:
     """Devuelve una lista de 5 a 8 beats/actos que va a tener la historia."""
     cliente = _cliente()
-    system = f"""
-Sos guionista de historias narrativas largas para audio/video (estilo
-"historias de reddit" pero extendidas). Vas a idear un ESQUEMA de
-historia ORIGINAL (no copies ninguna historia existente), inspirado
-libremente en el tema y el tono de las referencias que te pasen.
-
-Devolve entre 5 y 8 puntos (uno por linea, sin numerar, sin viñetas,
-una frase por punto) que resuman la progresion narrativa: planteamiento,
-complicaciones crecientes, giro, clímax y resolucion. El narrador
-protagonista es de genero {genero} y cuenta la historia en primera
-persona.
-"""
+    if prompts is None:
+        prompts = cargar_idioma(idioma)
+    genero_nativo = genero_en_idioma(idioma, genero)
+    system = prompts.system_esquema(genero_nativo)
     user = f"Tema: {tema}\nDuracion objetivo de la historia completa: {minutos} minutos narrados."
     desenlace_info = elegir_desenlace()
     user += f"\n\n{desenlace_info['instruccion']}"
@@ -128,19 +105,12 @@ persona.
     return [l.strip("-• ").strip() for l in lineas if l.strip()]
 
 
-def expandir_capitulo(tema: str, genero: str, beat: str, contexto_previo: str, palabras_objetivo: int) -> str:
+def expandir_capitulo(tema: str, genero: str, beat: str, contexto_previo: str, palabras_objetivo: int, prompts=None, idioma: str = "es") -> str:
     cliente = _cliente()
-    system = f"""
-Continuas una historia narrada en primera persona (genero del narrador:
-{genero}), estilo "historia de reddit" para ser locutada en video.
-
-Escribi la siguiente parte de la historia desarrollando el punto
-indicado. Mantene coherencia total con lo ya escrito (mismos nombres,
-tono y hechos). No repitas informacion ya contada. No pongas titulos
-ni acotaciones, solo el texto narrado.
-
-Extension objetivo de esta parte: aproximadamente {palabras_objetivo} palabras.
-"""
+    if prompts is None:
+        prompts = cargar_idioma(idioma)
+    genero_nativo = genero_en_idioma(idioma, genero)
+    system = prompts.system_capitulo(genero_nativo).replace("{palabras}", str(palabras_objetivo))
     user = f"""
 Tema general de la historia: {tema}
 
@@ -159,14 +129,16 @@ Punto a desarrollar ahora: {beat}
     return respuesta.choices[0].message.content.strip()
 
 
-def generar_historia_completa(tema: str, genero: str, minutos: int, referencia_manual: str | None) -> tuple[str, str]:
+def generar_historia_completa(tema: str, genero: str, minutos: int, referencia_manual: str | None,
+                             idioma: str = "es") -> tuple[str, str]:
+    prompts = cargar_idioma(idioma)
     referencias = _leer_referencias(referencia_manual)
 
     print("Generando gancho...")
-    gancho = generar_gancho(tema, genero, referencias)
+    gancho = generar_gancho(tema, genero, referencias, prompts, idioma)
 
     print("Generando esquema de la historia...")
-    beats = generar_esquema(tema, genero, minutos, referencias)
+    beats = generar_esquema(tema, genero, minutos, referencias, prompts, idioma)
     if not beats:
         raise RuntimeError(
             "El esquema de la historia volvió vacío. Probablemente max_tokens es muy bajo "
@@ -182,7 +154,7 @@ def generar_historia_completa(tema: str, genero: str, minutos: int, referencia_m
     contexto = ""
     for i, beat in enumerate(beats, 1):
         print(f"Escribiendo parte {i}/{len(beats)}: {beat[:60]}...")
-        texto = expandir_capitulo(tema, genero, beat, contexto, palabras_por_beat)
+        texto = expandir_capitulo(tema, genero, beat, contexto, palabras_por_beat, prompts, idioma)
         partes.append(texto)
         contexto += "\n\n" + texto
 
@@ -191,19 +163,26 @@ def generar_historia_completa(tema: str, genero: str, minutos: int, referencia_m
 
 
 def main():
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
     parser = argparse.ArgumentParser(description="Genera una historia original inspirada en tu banco de historias.")
     parser.add_argument("tema", help='Tema o consulta, ej: "traicion de un mejor amigo"')
     parser.add_argument("--genero", choices=["hombre", "mujer"], default="mujer", help="Genero del narrador protagonista")
     parser.add_argument("--minutos", type=int, default=30, help="Duracion objetivo en minutos narrados (20-40 recomendado)")
+    parser.add_argument("--idioma", choices=["es", "en", "pt"], default="es",
+                        help="Idioma nativo del guion (default: es)")
     parser.add_argument("--referencia", default=None, help="Ruta a un .txt puntual para usar como inspiracion de estilo")
     parser.add_argument("--salida", default=None, help="Nombre del archivo de salida (por defecto se autogenera)")
     args = parser.parse_args()
 
-    gancho, historia = generar_historia_completa(args.tema, args.genero, args.minutos, args.referencia)
+    gancho, historia = generar_historia_completa(args.tema, args.genero, args.minutos, args.referencia, args.idioma)
 
     guion_final = f"{gancho}\n\n---\n\n{historia}"
     guion_final = agregar_firma(guion_final)
-    guion_final = f"[GENERO: {args.genero}]\n\n{guion_final}"
+    guion_final = f"[GENERO: {args.genero}]\n[IDIOMA: {args.idioma}]\n\n{guion_final}"
 
     CARPETA_SALIDA.mkdir(exist_ok=True)
     nombre_archivo = args.salida or (args.tema.lower().replace(" ", "_")[:40] + ".txt")

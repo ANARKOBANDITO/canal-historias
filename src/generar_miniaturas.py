@@ -61,11 +61,34 @@ def _detectar_expresion(ruta_guion: Path) -> str:
     return "neutral"
 
 
+def _leer_premisa(ruta_guion: Path) -> str:
+    """Extrae la premisa/gancho del guion (primer parrafo tras los metadatos).
+
+    La escena de la miniatura debe reflejar la HISTORIA, no el nombre del
+    archivo. El gancho es la esencia de la trama en primera persona.
+    """
+    lineas = ruta_guion.read_text(encoding="utf-8").splitlines()
+    texto = []
+    for linea in lineas:
+        if linea.startswith("["):
+            continue
+        if linea.strip() == "":
+            continue
+        texto.append(linea.strip())
+        if len(texto) >= 3 or "..." in linea:
+            break
+    return " ".join(texto)[:400] if texto else ruta_guion.stem.replace("_", " ")
+
+
 def generar_escena(ruta_guion: Path, ruta_png: Path, backend: str = BACKEND) -> None:
-    """Genera la escena de fondo con Qwen-Image-Edit segun el tema del guion."""
+    """Genera la escena de fondo con Qwen-Image-Edit segun la premisa del guion."""
     ruta_png.parent.mkdir(exist_ok=True, parents=True)
-    titulo = ruta_guion.stem.replace("_", " ").title()
-    prompt = f"Escena cinematografica dramatica para video de historia de terror/confesion sobre: {titulo}. Estilo YouTube thumbnail, alta calidad, iluminacion dramatica."
+    premisa = _leer_premisa(ruta_guion)
+    prompt = (
+        f"Escena cinematografica dramatica para un video de historia de confesion. "
+        f"La historia trata sobre: {premisa}. "
+        f"Estilo YouTube thumbnail, alta calidad, iluminacion dramatica, composicion centrada."
+    )
 
     if backend == "api":
         # TODO: conectar con la API de Qwen cuando el usuario la provea.
@@ -80,8 +103,16 @@ def generar_escena(ruta_guion: Path, ruta_png: Path, backend: str = BACKEND) -> 
         from diffusers.utils import load_image
         from PIL import Image
 
+        cargas = {
+            "torch_dtype": torch.bfloat16,
+        }
+        # En RTX 3090 (24GB) el modelo de 38GB NO cabe en bf16: cuantizar a 4-bit.
+        if torch.cuda.is_available() and torch.cuda.get_device_properties(0).total_memory < 40 * 2**30:
+            print("  [INFO] GPU < 40GB: cargando Qwen-Image-Edit con cuantizacion 4-bit...")
+            cargas["load_in_4bit"] = True
+
         pipe = QwenImageEditPipeline.from_pretrained(
-            "Qwen/Qwen-Image-Edit-2511", torch_dtype=torch.bfloat16
+            "Qwen/Qwen-Image-Edit-2511", **cargas
         )
         pipe.to("cuda" if torch.cuda.is_available() else "cpu")
 

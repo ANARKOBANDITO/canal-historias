@@ -20,6 +20,16 @@
 - Paquete: `chatterbox-tts` 0.1.7. **Import correcto**:
   `from chatterbox.mtl_tts import ChatterboxMultilingualTTS` (NO `chatterbox_tts`).
 - Requiere `torch==2.6.0`. Modelo en HF: `ResembleAI/chatterbox` (publico, no gated).
+- **API 0.1.7**: `from_pretrained(device=torch.device("cuda"))` — NO acepta
+  `model_id` ni `t3_model`. Generar: `model.generate(text=..., language_id=...,
+  audio_prompt_path=...)`. Sample rate: `model.sr` (24000).
+- **FRAGMENTACION OBLIGATORIA**: el modelo hardcodea `max_new_tokens=1000`.
+  Un guion entero (20 min) crashea con `CUDA error: device-side assert`.
+  `generar_audio.py` divide el texto en fragmentos ~180 palabras y concatena
+  los WAV (funcion `_dividir_texto`).
+- **HF_HUB_DISABLE_XET=1** en el pod: el acelerador Xet de HF falla en hosts
+  del marketplace (`xet-read-token` error de red). Exportar antes de
+  `from_pretrained` (generar_audio.py lo hace con `os.environ.setdefault`).
 - Voice cloning: necesita clip de referencia ~10s por idioma en `storage/voces/`
   (generar con `generar_referencias.py`, edge-tts). Voces: es-MX-JorgeNeural,
   en-US-GuyNeural, pt-BR-AntonioNeural.

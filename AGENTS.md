@@ -16,6 +16,8 @@ canal-historias/
 │   ├── generar_temas.py          # Genera premisas con DeepSeek (+ deduplicacion)
 │   ├── generar_historia.py       # Guion completo (gancho + esquema + capitulos)
 │   ├── generar_lote.py           # Batch: procesa data/temas_pendientes.txt
+│   ├── buscar_vast.py            # Busca instancias GPU Vast.ai (driver<580, cuda>=12.8)
+│   ├── provisionar_vast.py       # Alquila + smoke test + instala + prueba en Vast.ai
 │   ├── variacion_narrativa.py    # Rota tipos de gancho y desenlace
 │   ├── firma_editorial.py        # Sello de cierre reconocible del canal
 │   ├── banco_temas.py            # Deduplicacion de temas (sentence-transformers)
@@ -181,9 +183,14 @@ GPU (Vast.ai, aparte): `chatterbox-tts`, `torch`, `diffusers`, `transformers`.
 ```bash
 # Generar 10 temas variados
 python src/generar_temas.py --cantidad 10
-
 # Generar 5 temas sobre un topico especifico
 python src/generar_temas.py --cantidad 5 --tema "traicion entre hermanos"
+
+# Buscar instancias GPU validas en Vast.ai (gratis, sin API key)
+python src/buscar_vast.py
+
+# Alquilar + smoke test CUDA + instalar + probar Chatterbox en Vast.ai
+python src/provisionar_vast.py --provisionar --clave "C:\Users\allen\.ssh\id_ed25519" --conservar
 
 # Generar un solo guion de prueba
 python src/generar_historia.py "un perro perdido que vuelve a casa" --genero mujer --minutos 5
@@ -235,10 +242,14 @@ python src/dividir_audio.py --procesar
 - **IMPORTANTE: Causa raiz del cuInit=999.** Bug del modulo kernel nvidia-uvm en
   driver 580.95.05 (NVIDIA/open-gpu-kernel-modules#797) + bug del toolkit 1.19.1
   (#1934/#1967/#1246). Es problema del HOST, no de la imagen ni del Pod.
-- **IMPORTANTE: Vast.ai (proveedor GPU elegido).** Usar la API de busqueda para
-  filtrar `driver_version < 580` y `cuda_max_good >= 12.8` ANTES de alquilar.
+- **IMPORTANTE: Vast.ai (proveedor GPU elegido).** Automatizado en
+  `src/buscar_vast.py` (busqueda publica, sin key) y `src/provisionar_vast.py`
+  (alquilar + smoke test + instalar + probar). La busqueda filtra
+  `driver_version < 580` y `cuda_max_good >= 12.8` ANTES de alquilar.
   Smoke test obligatorio al conectar: `python3 -c "import ctypes; c=ctypes.CDLL('libcuda.so.1'); print(c.cuInit(0))"`.
-  Si != 0, terminar instancia y reprovisionar. Docker options: `--shm-size=32gb`.
+  Si != 0, el script destruye la instancia solo (costo ~$0.01). Docker options: `--shm-size=32gb`.
+  Imagen con torch 2.6.0: `pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime`. La API
+  responde `offers` (no `bundles`). Crear instancia: `PUT /api/v0/asks/{offer_id}/`.
 - **IMPORTANTE: Verificar CUDA primero.** Antes de instalar cualquier cosa en un Pod
   GPU, ejecutar: `python3 -c "import torch; print(torch.cuda.is_available())"`.
   Si es False, no seguir. Terminar el Pod y buscar otro host/proveedor.

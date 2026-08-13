@@ -19,8 +19,11 @@ Uso (desde la raiz del proyecto):
     python src/generar_audio.py "guion.txt" --motor chatterbox --idioma pt
 """
 
+from __future__ import annotations
+
 import argparse
 import asyncio
+import os
 import subprocess
 from pathlib import Path
 
@@ -139,11 +142,36 @@ def _obtener_chatterbox(device: str = DEVICE_CHATTERBOX):
     if _instancia_chatterbox is None:
         if not HAY_CHATTERBOX:
             raise RuntimeError("chatterbox-tts no esta instalado. pip install chatterbox-tts")
+        # Vast.ai: el acelerador Xet de HF falla en hosts del marketplace; usar HTTPS.
+        os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
         print(f"  Cargando Chatterbox Multilingual V3 en {device}...")
         _instancia_chatterbox = ChatterboxMultilingualTTS.from_pretrained(
-            device=device, t3_model="v3"
+            device=device
         )
     return _instancia_chatterbox
+
+
+def _dividir_texto(texto: str, max_palabras: int = 180) -> list[str]:
+    """Divide el texto en fragmentos de ~max_palabras para TTS por fragmentos.
+
+    Chatterbox hardcodea max_new_tokens=1000, por lo que un guion entero de
+    20 min excede el limite y crashea en CUDA. Se genera por fragmentos y se
+    concatenan los WAV despues.
+    """
+    oraciones = texto.replace("\n", " ").split(". ")
+    fragmentos: list[str] = []
+    actual: list[str] = []
+    for oracion in oraciones:
+        oracion = oracion.strip()
+        if not oracion:
+            continue
+        actual.append(oracion)
+        if sum(len(o.split()) for o in actual) >= max_palabras:
+            fragmentos.append(". ".join(actual).strip() + ".")
+            actual = []
+    if actual:
+        fragmentos.append(". ".join(actual).strip() + ".")
+    return [f for f in fragmentos if f.strip()]
 
 
 def _generar_chatterbox(texto: str, idioma: str, ruta_mp3: Path,
@@ -151,13 +179,22 @@ def _generar_chatterbox(texto: str, idioma: str, ruta_mp3: Path,
     model = _obtener_chatterbox(device)
     ruta_wav = ruta_mp3.with_suffix(".wav")
 
+    fragmentos = _dividir_texto(texto)
+    print(f"  [chatterbox] {len(fragmentos)} fragmentos ({sum(len(f.split()) for f in fragmentos)} palabras)")
+
+    # Voice cloning: preparar condicionals UNA vez (modelo cachea self.conds)
     kwargs = {"language_id": idioma}
     if ruta_ref and ruta_ref.exists():
-        kwargs["audio_prompt_path"] = str(ruta_ref)
         print(f"  [voice cloning: {ruta_ref.name}]")
+        model.prepare_conditionals(str(ruta_ref), exaggeration=0.5)
 
-    wav = model.generate(texto, **kwargs)
-    ta.save(str(ruta_wav), wav, model.sr)
+    wavs = []
+    for i, frag in enumerate(fragmentos, 1):
+        print(f"    fragmento {i}/{len(fragmentos)}...")
+        wav = model.generate(frag, **kwargs)
+        wavs.append(wav.squeeze(0))
+    wav_final = torch.cat(wavs, dim=0).unsqueeze(0)
+    ta.save(str(ruta_wav), wav_final, model.sr)
 
     subprocess.run([
         "ffmpeg", "-y",

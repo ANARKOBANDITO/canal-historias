@@ -20,35 +20,19 @@ Requisitos:
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
 from openai import OpenAI
 
 from banco_temas import cargar_banco, agregar_tema, es_tema_repetido
+from prompts import cargar_idioma
 
 API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 BASE_URL = "https://api.deepseek.com/v1"
 MODEL = "deepseek-v4-flash"
 
 ARCHIVO_PENDIENTES = Path("data/temas_pendientes.txt")
-
-CATEGORIAS = [
-    "traiciones y engaños en pareja",
-    "conflictos familiares y herencias",
-    "problemas en el trabajo con jefes o compañeros",
-    "amistades que terminan mal",
-    "vecinos y convivencia",
-    "situaciones de venganza justificada",
-    "secretos familiares que salen a la luz",
-    "dilemas de convivencia con suegros",
-    "misterios y eventos inexplicables en la vida cotidiana",
-    "errores del pasado que regresan a cobrar factura",
-    "citas desastrosas o relaciones que empiezan con una mentira",
-    "encuentros perturbadores con desconocidos",
-    "dinero o herencias inesperadas que destruyen relaciones",
-    "secretos expuestos por redes sociales o tecnología",
-    "competencia y rivalidad entre hermanos",
-]
 
 
 def _cliente() -> OpenAI:
@@ -57,29 +41,12 @@ def _cliente() -> OpenAI:
     return OpenAI(api_key=API_KEY, base_url=BASE_URL)
 
 
-def proponer_temas(categoria: str, cantidad: int, tema_especifico: bool = False) -> list[str]:
+def proponer_temas(categoria: str, cantidad: int, tema_especifico: bool = False, prompts=None) -> list[str]:
+    if prompts is None:
+        prompts = cargar_idioma("es")
     cliente = _cliente()
-    system = """
-Generas premisas de historias personales estilo "historias de reddit"
-para videos narrados. Cada premisa es UNA frase corta (15-25 palabras)
-que resume el conflicto central, sin resolverlo.
-
-Devolve una premisa por linea, sin numerar, sin viñetas, sin texto
-adicional.
-"""
-
-    if tema_especifico:
-        user = (
-            f"Quiero {cantidad} premisas de historias estilo \"historias de reddit\" "
-            f"sobre el siguiente tema: {categoria}.\n\n"
-            f"Cada premisa debe ser una frase corta (15-25 palabras) que resuma un "
-            f"conflicto concreto, sin resolverlo. Variá los ángulos: distintos tipos "
-            f"de personajes, situaciones, puntos de vista y giros dentro del mismo tema. "
-            f"Ninguna premisa debe parecerse a las demás.\n\n"
-            f"Una premisa por linea, sin numerar ni viñetas."
-        )
-    else:
-        user = f"Genera {cantidad} premisas distintas sobre: {categoria}"
+    system = prompts.system_temas()
+    user = prompts.user_temas(cantidad, categoria, tema_especifico)
 
     respuesta = cliente.chat.completions.create(
         model=MODEL,
@@ -92,7 +59,9 @@ adicional.
     return [l.strip("-• ").strip() for l in lineas if l.strip()]
 
 
-def generar_temas_unicos(cantidad_objetivo: int, tema_especifico: str | None = None) -> list[str]:
+def generar_temas_unicos(cantidad_objetivo: int, tema_especifico: str | None = None, idioma: str = "es") -> list[str]:
+    prompts = cargar_idioma(idioma)
+    categorias = prompts.CATEGORIAS
     banco = cargar_banco()
     temas_nuevos = []
     intentos = 0
@@ -101,7 +70,7 @@ def generar_temas_unicos(cantidad_objetivo: int, tema_especifico: str | None = N
     if tema_especifico:
         while len(temas_nuevos) < cantidad_objetivo and intentos < max_intentos:
             faltan = cantidad_objetivo - len(temas_nuevos)
-            candidatos = proponer_temas(tema_especifico, cantidad=min(5, faltan + 2), tema_especifico=True)
+            candidatos = proponer_temas(tema_especifico, cantidad=min(5, faltan + 2), tema_especifico=True, prompts=prompts)
 
             for tema in candidatos:
                 if len(temas_nuevos) >= cantidad_objetivo:
@@ -116,8 +85,8 @@ def generar_temas_unicos(cantidad_objetivo: int, tema_especifico: str | None = N
             intentos += 1
     else:
         while len(temas_nuevos) < cantidad_objetivo and intentos < max_intentos:
-            categoria = CATEGORIAS[intentos % len(CATEGORIAS)]
-            candidatos = proponer_temas(categoria, cantidad=5)
+            categoria = categorias[intentos % len(categorias)]
+            candidatos = proponer_temas(categoria, cantidad=5, prompts=prompts)
 
             for tema in candidatos:
                 if len(temas_nuevos) >= cantidad_objetivo:
@@ -135,17 +104,24 @@ def generar_temas_unicos(cantidad_objetivo: int, tema_especifico: str | None = N
 
 
 def main():
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
     parser = argparse.ArgumentParser(description="Genera temas de historias nuevos automaticamente.")
     parser.add_argument("--cantidad", type=int, default=10, help="Cuantos temas nuevos generar")
     parser.add_argument("--tema", type=str, default=None, help="Tema o idea especifica para generar las premisas (ej: traicion familiar, venganza, infidelidad). Si no se pasa, se usan categorias variadas.")
+    parser.add_argument("--idioma", choices=["es", "en", "pt"], default="es",
+                        help="Idioma nativo de las premisas (default: es)")
     args = parser.parse_args()
 
     if args.tema:
-        print(f"Generando {args.cantidad} temas sobre \"{args.tema}\"...\n")
+        print(f"Generando {args.cantidad} temas sobre \"{args.tema}\" ({args.idioma})...\n")
     else:
-        print(f"Generando {args.cantidad} temas nuevos y unicos (categorias variadas)...\n")
+        print(f"Generando {args.cantidad} temas nuevos y unicos (categorias variadas, {args.idioma})...\n")
 
-    temas = generar_temas_unicos(args.cantidad, tema_especifico=args.tema)
+    temas = generar_temas_unicos(args.cantidad, tema_especifico=args.tema, idioma=args.idioma)
 
     with open(ARCHIVO_PENDIENTES, "a", encoding="utf-8") as f:
         for tema in temas:

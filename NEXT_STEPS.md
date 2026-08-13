@@ -2,10 +2,47 @@
 
 > Leer este archivo PRIMERO al retomar el proyecto.
 > Contexto completo en `RESUMEN_PROYECTO.md` y convenciones en `AGENTS.md`.
+> **PLAN DE CALIDAD vigente (12/08): `PLAN_CALIDAD.md`** — leerlo antes de producir.
 
 ---
 
-## Estado actual (10/08, cierre de sesion)
+## Estado actual (12/08, cierre de sesion — PRODUCTO RECHAZADO por calidad)
+
+> El trabajo del 11/08 fue lento y de baja calidad. Se descarto el output.
+> Decisiones: Chatterbox se mantiene como TTS (quemar saldo RunPod), miniaturas
+> y avatar por API (Qwen-Image-Edit via Replicate), transferencia con Rclone.
+> Ver `PLAN_CALIDAD.md` para el plan completo de reconstruccion.
+>
+> **AVANCE 12/08 (tarde):** Fase 0 y Fase 1 COMPLETADAS. Output residual
+> limpiado (solo quedan los 3 guiones), Rclone 1.75.0 instalado (winget) y
+> `src/bajar_resultados.py` creado y verificado. Sigue Fase 2 (avatar).
+
+### Lo que quedo y se conserva
+- **3 guiones** en `output/guiones_listos/` (ES + 2 EN, ~21-24 min c/u) — se
+  conservan para el piloto.
+- `data/` (temas, banco, gameplay_urls), `storage/fotos/` (conejito),
+  `storage/voces/`, modelos Kokoro, fuente Montserrat.
+- Fixes de codigo ya aplicados (ver git): `cortar_shorts.py` (filter_complex),
+  `revisar_miniaturas.py` (try/except load_in_4bit), `generar_audio.py`
+  (fragmentacion, `from __future__`), multi-idioma en guiones (`--idioma`).
+
+### Lo que se borro / descarto
+- 8 shorts con clips de 45s (inutilizables), 3 miniaturas genericas, tarjetas
+  sin avatar, videos/audios (se perdieron al destruir el pod). Pod GPU
+  destruido el 12/08 (0 instancias activas, facturacion cortada).
+
+### Pendiente (orden de ejecucion, ver PLAN_CALIDAD.md)
+1. ~~Fase 0~~ y ~~Fase 1~~: **COMPLETADAS (12/08)** — limpieza de output residual
+   y Rclone + `src/bajar_resultados.py`.
+2. **Fase 2**: avatar con Qwen-Image-Edit por API (reescribir `generar_avatar.py`).
+3. **Fase 3**: miniaturas Qwen API (`--backend api` real).
+4. **Fase 4**: fix `cortar_shorts.py` remanente + probar `chatterbox-api` texto completo.
+5. **Fase 5**: piloto de 1 video end-to-end, bajado con rclone.
+6. **Fase 6**: validar con el usuario y escalar a 3/semana.
+
+---
+
+## Historial (10/08, primera sesion de produccion)
 
 - Pipeline CPU completo probado (guiones + audio + subtitulos + video + gameplay).
 - **Nuevos scripts creados y pusheados** (commit `675e8`):
@@ -35,13 +72,50 @@
 ## LO QUE SE NECESITA PARA ARRANCAR (cuando el usuario vuelva)
 
 1. **Cuenta Vast.ai + credito + API key** — el "combustible" de todo el pipeline GPU.
-   - Buscar instancia RTX 3090 filtrando `driver_version < 580` y `cuda_max_good >= 12.8`.
+   - **Automatizado (10/08):** `src/buscar_vast.py` (buscador con filtros driver<580,
+     cuda>=12.8, publico, NO requiere key) y `src/provisionar_vast.py` (ciclo completo:
+     alquilar → smoke test → instalar → probar Chatterbox). Ver guia abajo.
    - Smoke test al conectar: `python3 -c "import ctypes; c=ctypes.CDLL('libcuda.so.1'); print(c.cuInit(0))"`.
      Si != 0 → terminar y reprovisionar.
    - Docker options: `--shm-size=32gb`.
 2. **Foto del conejito del usuario** → guardar en `storage/fotos/conejito.jpg` (para el avatar).
 3. **Token de HuggingFace** (gratis, cuenta ya creada) → para Nano Banana (gated) y modelos.
 4. API keys que YA tenemos: `DEEPSEEK_API_KEY`, `RUNPOD_API_KEY` (guardada como env var).
+
+## GUIA DE ARRANQUE Vast.ai (10/08, scripts automatizados)
+
+La busqueda y el provisionamiento estan automatizados. Flujo recomendado:
+
+```bash
+# 0. Ver instancias validas AHORA (gratis, no necesita cuenta)
+python src/buscar_vast.py
+#    -> muestra ofertas RTX 3090/4090 con driver < 580 y cuda >= 12.8
+#    -> si aparece vacio, probar: --max-precio 0.40 o --tipo interruptible
+
+# 1. Crear cuenta en https://vast.ai (requiere tarjeta, credito prepago ~$10)
+# 2. Generar API key en https://cloud.vast.ai/manage-keys/ (+New)
+#    setx VAST_AI_API_KEY "tu-key"   (Windows)
+# 3. Registrar una clave SSH publica en la cuenta (Account Settings) y
+#    tener la privada localmente (ej. C:\Users\allen\.ssh\id_ed25519)
+
+# 4. Alquilar la mas barata y probar en 1 paso (~$0.01 si el smoke falla):
+python src/provisionar_vast.py --provisionar --clave "C:\Users\allen\.ssh\id_ed25519" --conservar
+```
+
+Comandos paso a paso alternativos:
+
+```bash
+python src/provisionar_vast.py --alquilar <OFFER_ID>        # devuelve INSTANCE_ID
+python src/provisionar_vast.py --esperar <INSTANCE_ID>      # espera boot
+python src/provisionar_vast.py --smoke-test <INSTANCE_ID> --clave "..."   # cuInit == 0 obligatorio
+python src/provisionar_vast.py --instalar <INSTANCE_ID> --clave "..."    # chatterbox-tts + whisper
+python src/provisionar_vast.py --probar-chatterbox <INSTANCE_ID> --clave "..."  # 1 frase por idioma
+python src/provisionar_vast.py --destruir <INSTANCE_ID>     # fin de facturacion
+```
+
+**Regla de oro:** si `--smoke-test` falla (cuInit != 0), el script destruye la
+instancia solo y el costo es ~$0.01. Reintentar con otra oferta de `--buscar`.
+Ya se confirmo (10/08) que hay ~15-17 ofertas validas disponibles.
 
 ## PROXIMOS PASOS (en orden)
 
@@ -82,6 +156,10 @@
 - **API serverless SI funciona** (Chatterbox Turbo, `https://api.runpod.ai/v2/chatterbox-turbo/runsync`,
   $0.001/seg, voice_url para voice cloning, audio expira en 7 dias).
 - **Vast.ai:** filtrar driver < 580. RTX 3090 ~$0.08-0.12/hr, A6000 48GB ~$0.30/hr.
+  Busqueda y provisionamiento automatizados: `src/buscar_vast.py` y `src/provisionar_vast.py`.
+  La API publica responde `offers` (no `bundles`) en `https://console.vast.ai/api/v0/bundles/`.
+  Imagen Docker con torch 2.6.0 preinstalado: `pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime`.
+  Crear instancia: `PUT /api/v0/asks/{offer_id}/` con `{"image":..., "disk":60}`.
 - **Chatterbox-tts 0.1.7** requiere torch==2.6.0. Import: `from chatterbox.mtl_tts import ChatterboxMultilingualTTS`.
 - **Modelo HF TTS:** ResembleAI/chatterbox (publico, no gated, NO requiere token).
 - **Nano Banana (Gemma 3)** y **MiniMax M3** en HF son gated → requieren token de HF.
