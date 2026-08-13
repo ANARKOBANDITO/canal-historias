@@ -28,12 +28,13 @@ FFMPEG = "ffmpeg"
 # Codec de video: NVENC si hay GPU NVIDIA disponible, sino libx264
 def _detectar_codec() -> str:
     """Prueba NVENC con un encode de 1 frame. Si falla, usa libx264."""
+    import os
     try:
         proc = subprocess.run(
             [FFMPEG, "-hide_banner", "-y",
              "-f", "lavfi", "-i", "color=black:s=64x64:r=1",
              "-frames:v", "1",
-             "-c:v", "h264_nvenc", "-f", "null", "NUL"],
+             "-c:v", "h264_nvenc", "-f", "null", os.devnull],
             capture_output=True, text=True, timeout=10,
         )
         if proc.returncode == 0:

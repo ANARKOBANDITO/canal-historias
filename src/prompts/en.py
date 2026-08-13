@@ -82,7 +82,9 @@ by the topic and the tone of the references you are given.
 Output between 5 and 8 points (one per line, unnumbered, no bullets,
 one sentence per point) that summarize the narrative progression:
 setup, growing complications, twist, climax and resolution. The narrator
-protagonist is {genero} and tells the story in the first person.
+protagonist is {genero} and tells the story in the first person. Keep
+absolute narrator gender consistency (never switch who tells the story)
+and do not repeat words or phrases.
 """
 
 
@@ -97,4 +99,9 @@ facts). Do not repeat information already told. Do not add titles or
 stage directions, only the narrated text.
 
 Target length for this part: approximately {{palabras}} words.
+
+Quality rules: do not repeat consecutive words or phrases (no "the the",
+no repeating the same sentence), keep sentences natural and medium-length
+(max ~35 words), and keep the narrator's first-person gender consistent
+with what was already written.
 """

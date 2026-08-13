@@ -277,3 +277,21 @@ python src/dividir_audio.py --procesar
   licencia de cada video antes de usarlo en canal monetizado (el .txt guarda el
   titulo/canal como comentario de referencia).
 - Ejecutar siempre desde la raiz del proyecto.
+
+## Lecciones 13/08 (piloto ES) — reglas duras
+
+- **Genero del narrador = voz.** El `[GENERO:]` del guion debe coincidir con la voz
+  que usa la historia (p.ej. "mi novio..." => narradora mujer). Correr SIEMPRE
+  `python src/validar_guiones.py` antes de locutar (detecta genero, palabras
+  repetidas, n-gramas loop y frases largas).
+- **Gameplay de calidad:** el gameplay_lite NO debe ir a 2 Mbps (queda pixelado).
+  Usar crf ~20 / maxrate 6-8M, o el gameplay crudo.
+- **9:16 en partes:** los videos verticales se dividen en partes de ~5 min (corte
+  en fin de capitulo, sin clips <90s) y cada parte termina con CTA NARRADO
+  "para la parte X, like y seguir" (TikTok/Shorts/Reels).
+- **Replicate sin credito = 402.** `generar_avatar.py` y
+  `generar_miniaturas.py --backend api` fallan si no hay saldo. Verificar antes.
+- **NVENC roto en pods driver 570** (nvenc API 13.0 vs ffmpeg nuevo 13.1): render
+  cae a libx264 CPU (lento). Fix pendiente: ffmpeg BtbN 2025 en el pod.
+- **Chatterbox fragmenta por parrafos** (max_new_tokens=1000): pausas de 0.35s entre
+  fragmentos. Cobertura validada con `src/qa_audio.py` (>= 95%).

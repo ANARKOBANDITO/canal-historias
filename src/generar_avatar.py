@@ -3,14 +3,18 @@ generar_avatar.py
 
 Genera el avatar del canal (conejito-robot estilo Snoo adaptado) a partir
 de una foto de referencia del conejito del usuario, usando Qwen-Image-Edit-2511
-en GPU (Vast.ai). Genera las 10 expresiones del canal en PNG transparente.
+por API (Replicate). Genera las 10 expresiones del canal en PNG transparente.
 
 Expresiones: neutral, feliz, triste, enojado, sorprendido, asustado,
 decepcionado, emocionado, pensativo, sospechoso.
 
-Uso (en el pod, desde la raiz del proyecto):
+La foto de referencia se manda como data URL (<= 256 KB). El fondo se pide
+blanco liso y se quita en post-proceso (transparencia) con Pillow.
+
+Uso (desde la raiz del proyecto):
     python src/generar_avatar.py "storage/fotos/conejito.jpg"
     python src/generar_avatar.py --foto "storage/fotos/WhatsApp Image 2026-08-11 at 02.25.58.jpeg" --solo neutral
+    python src/generar_avatar.py --todas
 """
 
 import argparse
@@ -18,13 +22,16 @@ from pathlib import Path
 
 from PIL import Image
 
+from qwen_api import data_url, descargar, ejecutar_prediccion
+
 CARPETA_AVATAR = Path("storage/avatar")
+CARPETA_SRC = CARPETA_AVATAR / "_src"
 
 PROMPT_BASE = (
     "Convierte esta foto de un conejo en un avatar de canal estilo mascota: "
     "un conejito-robot animado estilo Snoo (NO el logo de Reddit), cabeza redonda "
-    "tipo peluche, ojos grandes expresivos, cuerpo simple, fondo TRANSPARENTE, "
-    "ilustracion limpia para YouTube. Expresion facial: {expresion}. "
+    "tipo peluche, ojos grandes expresivos, cuerpo simple, sobre un fondo BLANCO "
+    "LISO Y UNIFORME, ilustracion limpia para YouTube. Expresion facial: {expresion}. "
     "Sin texto, sin logotipos, centrado, recorte de busto."
 )
 
@@ -42,53 +49,51 @@ EXPRESIONES = {
 }
 
 
-def _recortar_transparente(ruta_png: Path) -> None:
-    """Recorta el PNG a la bounding box no transparente (limpieza del avatar)."""
-    img = Image.open(ruta_png)
-    if img.mode != "RGBA":
-        img = img.convert("RGBA")
+def _fondo_transparente(ruta_src: Path, ruta_out: Path) -> None:
+    """Quita el fondo blanco liso (post-proceso) y recorta a la silueta."""
+    img = Image.open(ruta_src).convert("RGBA")
+    w, h = img.size
+    px = img.load()
+    umbral = 90
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            dist = abs(r - 255) + abs(g - 255) + abs(b - 255)
+            if dist < umbral:
+                alpha = max(0, int(255 * dist / umbral))
+                px[x, y] = (r, g, b, alpha)
     alpha = img.getchannel("A")
     bbox = alpha.getbbox()
     if bbox:
         img = img.crop(bbox)
-    img.save(ruta_png)
+    ruta_out.parent.mkdir(parents=True, exist_ok=True)
+    img.save(ruta_out)
 
 
-def generar_avatar(ruta_foto: Path, expresiones: list[str], solo: str | None = None) -> None:
-    import torch
-    from diffusers import QwenImageEditPipeline
-
-    cargas = {"torch_dtype": torch.bfloat16}
-    if torch.cuda.is_available() and torch.cuda.get_device_properties(0).total_memory < 40 * 2**30:
-        print("  [INFO] GPU < 40GB: cargando con cuantizacion 4-bit...")
-        cargas["load_in_4bit"] = True
-
-    print("Cargando Qwen-Image-Edit-2511...")
-    pipe = QwenImageEditPipeline.from_pretrained("Qwen/Qwen-Image-Edit-2511", **cargas)
-    pipe.to("cuda" if torch.cuda.is_available() else "cpu")
-
-    foto = Image.open(ruta_foto).convert("RGB")
-    CARPETA_AVATAR.mkdir(exist_ok=True, parents=True)
+def generar_avatar(ruta_foto: Path, expresiones: list[str]) -> None:
+    print(f"Foto de referencia: {ruta_foto.name} ({ruta_foto.stat().st_size // 1024} KB)")
+    foto_url = data_url(ruta_foto)
+    CARPETA_SRC.mkdir(parents=True, exist_ok=True)
 
     for expr in expresiones:
-        if solo and expr != solo:
-            continue
         print(f"Generando avatar_{expr}.png ...")
         prompt = PROMPT_BASE.format(expresion=EXPRESIONES[expr])
-        img = pipe(prompt=prompt, image=foto, guidance_scale=4.0).images[0]
+        url = ejecutar_prediccion(prompt, [foto_url], aspect="1:1", formato="png")
+        ruta_src = CARPETA_SRC / f"avatar_{expr}.png"
+        descargar(url, ruta_src)
         ruta_out = CARPETA_AVATAR / f"avatar_{expr}.png"
-        img.save(ruta_out)
         try:
-            _recortar_transparente(ruta_out)
-        except Exception:
-            pass
-        print(f"  -> {ruta_out}")
+            _fondo_transparente(ruta_src, ruta_out)
+            print(f"  -> {ruta_out} (transparente)")
+        except Exception as e:
+            ruta_src.replace(ruta_out)
+            print(f"  -> {ruta_out} (sin transparencia: {e})")
 
     print("\nAvatar listo en storage/avatar/.")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Genera el avatar del canal con Qwen-Image-Edit.")
+    parser = argparse.ArgumentParser(description="Genera el avatar del canal con Qwen-Image-Edit (Replicate).")
     parser.add_argument("foto", nargs="?", help="Ruta a la foto del conejito de referencia")
     parser.add_argument("--foto", dest="foto_alt", help="Alternativa a posicion: --foto")
     parser.add_argument("--solo", choices=list(EXPRESIONES.keys()), default=None,
@@ -96,13 +101,17 @@ def main():
     parser.add_argument("--todas", action="store_true", help="Generar las 10 expresiones")
     args = parser.parse_args()
 
-    foto = Path(args.foto or args.foto_alt or "")
-    if not foto.exists():
+    foto_arg = args.foto or args.foto_alt
+    if not foto_arg:
         candidatos = sorted(Path("storage/fotos").glob("*.jpeg")) + sorted(Path("storage/fotos").glob("*.jpg"))
         if not candidatos:
             raise SystemExit("No se encontro la foto del conejito en storage/fotos/.")
         foto = candidatos[0]
         print(f"Usando foto por defecto: {foto.name}")
+    else:
+        foto = Path(foto_arg)
+        if not foto.exists():
+            raise SystemExit(f"No existe la foto: {foto}")
 
     expresiones = list(EXPRESIONES.keys()) if args.todas else ([args.solo] if args.solo else ["neutral"])
     generar_avatar(foto, expresiones)

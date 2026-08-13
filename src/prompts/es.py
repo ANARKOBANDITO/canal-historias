@@ -85,7 +85,8 @@ Devolve entre 5 y 8 puntos (uno por linea, sin numerar, sin viñetas,
 una frase por punto) que resuman la progresion narrativa: planteamiento,
 complicaciones crecientes, giro, clímax y resolucion. El narrador
 protagonista es de genero {genero} y cuenta la historia en primera
-persona.
+persona. Mantene consistencia absoluta de genero del narrador (no cambies
+quien cuenta la historia) y no repitas palabras ni frases.
 """
 
 
@@ -100,4 +101,9 @@ tono y hechos). No repitas informacion ya contada. No pongas titulos
 ni acotaciones, solo el texto narrado.
 
 Extension objetivo de esta parte: aproximadamente {{palabras}} palabras.
+
+Reglas de calidad: no repitas palabras ni frases seguidas (prohibido "que
+que", "el el" o repetir la misma oracion), usa frases naturales de
+extension media (maximo ~35 palabras), y mantene el genero del narrador
+en primera persona consistente con lo ya escrito.
 """

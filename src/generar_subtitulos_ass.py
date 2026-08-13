@@ -152,7 +152,7 @@ def _validar_timing(palabras: list[dict], duracion_audio: float) -> None:
         print(f"    [AVISO] {solapados} palabra(s) con timestamps solapados.")
 
 
-def transcribir_y_generar_ass(ruta_audio: Path, ruta_ass: Path, vertical: bool = False, offset: float = 0.0, idioma: str | None = None) -> bool:
+def transcribir_y_generar_ass(ruta_audio: Path, ruta_ass: Path, vertical: bool = False, offset: float = 0.0, idioma: str | None = None, device: str = "cpu", modelo: str = "base") -> bool:
     ruta_fuente_absoluta = str(FUENTE.resolve())
     tamano = FONT_SIZE_VERTICAL if vertical else FONT_SIZE
     ancho = PLAYRES_X_916 if vertical else PLAYRES_X_169
@@ -163,11 +163,11 @@ def transcribir_y_generar_ass(ruta_audio: Path, ruta_ass: Path, vertical: bool =
     max_palabras = MAX_PALABRAS_LINEA_916 if vertical else MAX_PALABRAS_LINEA_169
     max_segundos = None if vertical else SEGUNDOS_LINEA_169
 
-    print(f"  Transcribiendo {ruta_audio.name}...")
-    modelo = WhisperModel(MODELO_WHISPER, device="cpu", compute_type="int8")
+    print(f"  Transcribiendo {ruta_audio.name} (whisper {modelo}, {device})...")
+    compute = "int8" if device == "cpu" else "float16"
+    modelo_whisper = WhisperModel(modelo, device=device, compute_type=compute)
 
-    segmentos, info = modelo.transcribe(str(ruta_audio), word_timestamps=True, language=idioma or "es")
-
+    segmentos, info = modelo_whisper.transcribe(str(ruta_audio), word_timestamps=True, language=idioma or "es")
     todas_palabras = []
     for seg in segmentos:
         if seg.words:
@@ -202,6 +202,10 @@ def main():
     parser.add_argument("--offset", type=float, default=0.0, help="Desplazamiento en segundos para ajustar timing (ej: -0.2 o 0.3)")
     parser.add_argument("--idioma", type=str, default=None, choices=["es", "en", "pt", "fr", "de", "auto"],
                         help="Idioma del audio para whisper (default: es. 'auto' = deteccion automatica)")
+    parser.add_argument("--device", type=str, default="cpu", choices=["cpu", "cuda"],
+                        help="Dispositivo para whisper (default: cpu; en el pod usar cuda)")
+    parser.add_argument("--modelo", type=str, default=MODELO_WHISPER,
+                        help="Tamano del modelo whisper (default: base)")
     args = parser.parse_args()
 
     if not FUENTE.exists():
@@ -235,7 +239,8 @@ def main():
         ruta_ass = CARPETA_ASS / f"{nombre_base}{sufijo}.ass"
 
         idioma_whisper = None if args.idioma == "auto" else (args.idioma or "es")
-        if transcribir_y_generar_ass(audio, ruta_ass, vertical=args.vertical, offset=args.offset, idioma=idioma_whisper):
+        if transcribir_y_generar_ass(audio, ruta_ass, vertical=args.vertical, offset=args.offset,
+                                     idioma=idioma_whisper, device=args.device, modelo=args.modelo):
             procesados += 1
 
     print(f"\nListo. {procesados}/{len(audios)} procesados.")

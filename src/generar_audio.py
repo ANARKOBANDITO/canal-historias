@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -82,10 +83,11 @@ VOZ_EDGE_POR_GENERO = {
 }
 
 # ── Chatterbox ───────────────────────────────────────────────
-VOZ_REFERENCIA_POR_IDIOMA = {
-    "es": "referencia_es.mp3",
-    "en": "referencia_en.mp3",
-    "pt": "referencia_pt.mp3",
+# Voz del canal: narrador HOMBRE (alonso) y MUJER (dalia), clonada
+# para TODOS los idiomas (es/en/pt). La referencia se elige por genero.
+VOZ_REFERENCIA_POR_GENERO = {
+    "hombre": "referencia_hombre.wav",
+    "mujer": "referencia_mujer.wav",
 }
 DEVICE_CHATTERBOX = "cuda" if (HAY_CHATTERBOX and torch.cuda.is_available()) else "cpu"
 
@@ -174,12 +176,35 @@ def _dividir_texto(texto: str, max_palabras: int = 180) -> list[str]:
     return [f for f in fragmentos if f.strip()]
 
 
+def _dividir_por_parrafos(texto: str, max_palabras: int = 200) -> list[str]:
+    """Fragmenta por parrafos/capitulos (pausas naturales del guion).
+
+    Cada capitulo se genera como una sola pasada y se concatenan con un
+    silencio breve entre ellos. Los parrafos demasiado largos se subdividen
+    por oraciones. Esto evita los cortes/glitches de concatenar pedazos
+    arbitrarios de ~180 palabras.
+    """
+    parrafos = [p.strip() for p in re.split(r"\n\s*\n", texto) if p.strip()]
+    fragmentos: list[str] = []
+    for p in parrafos:
+        p = p.strip()
+        if not p:
+            continue
+        if re.fullmatch(r"[\s\-–—*_]+", p):
+            continue
+        if len(p.split()) <= max_palabras:
+            fragmentos.append(p)
+        else:
+            fragmentos.extend(_dividir_texto(p, max_palabras))
+    return fragmentos
+
+
 def _generar_chatterbox(texto: str, idioma: str, ruta_mp3: Path,
                         ruta_ref: Path | None = None, device: str = DEVICE_CHATTERBOX) -> None:
     model = _obtener_chatterbox(device)
     ruta_wav = ruta_mp3.with_suffix(".wav")
 
-    fragmentos = _dividir_texto(texto)
+    fragmentos = _dividir_por_parrafos(texto)
     print(f"  [chatterbox] {len(fragmentos)} fragmentos ({sum(len(f.split()) for f in fragmentos)} palabras)")
 
     # Voice cloning: preparar condicionals UNA vez (modelo cachea self.conds)
@@ -188,12 +213,15 @@ def _generar_chatterbox(texto: str, idioma: str, ruta_mp3: Path,
         print(f"  [voice cloning: {ruta_ref.name}]")
         model.prepare_conditionals(str(ruta_ref), exaggeration=0.5)
 
-    wavs = []
+    gap = torch.zeros(int(0.35 * model.sr))
+    piezas = []
     for i, frag in enumerate(fragmentos, 1):
-        print(f"    fragmento {i}/{len(fragmentos)}...")
-        wav = model.generate(frag, **kwargs)
-        wavs.append(wav.squeeze(0))
-    wav_final = torch.cat(wavs, dim=0).unsqueeze(0)
+        print(f"    fragmento {i}/{len(fragmentos)} ({len(frag.split())} palabras)...")
+        wav = model.generate(frag, **kwargs).squeeze(0)
+        piezas.append(wav)
+        if i < len(fragmentos):
+            piezas.append(gap)
+    wav_final = torch.cat(piezas, dim=0).unsqueeze(0)
     ta.save(str(ruta_wav), wav_final, model.sr)
 
     subprocess.run([
@@ -359,21 +387,23 @@ def main():
             if not HAY_CHATTERBOX:
                 print("  chatterbox-tts no esta instalado. Instalalo con: pip install chatterbox-tts")
                 return
-            ruta_ref = CARPETA_VOCES / VOZ_REFERENCIA_POR_IDIOMA.get(idioma_efectivo, "")
+            genero_efectivo = genero_meta or args.genero
+            ruta_ref = CARPETA_VOCES / VOZ_REFERENCIA_POR_GENERO.get(genero_efectivo, "")
             if not ruta_ref.exists():
                 print(f"  [AVISO] No se encontro referencia {ruta_ref}. Generando con voz default.")
                 ruta_ref = None
-            print(f"  [IDIOMA: {idioma_efectivo}]")
+            print(f"  [IDIOMA: {idioma_efectivo}] [NARRADOR: {genero_efectivo}]")
             _generar_chatterbox(texto, idioma_efectivo, ruta_mp3, ruta_ref)
 
         elif args.motor == "chatterbox-api":
             if not HAY_REQUESTS:
                 print("  requests no esta instalado. pip install requests")
                 return
-            ruta_ref = CARPETA_VOCES / VOZ_REFERENCIA_POR_IDIOMA.get(idioma_efectivo, "")
+            genero_efectivo = genero_meta or args.genero
+            ruta_ref = CARPETA_VOCES / VOZ_REFERENCIA_POR_GENERO.get(genero_efectivo, "")
             if not ruta_ref.exists():
                 ruta_ref = None
-            print(f"  [IDIOMA: {idioma_efectivo}] (serverless RunPod)")
+            print(f"  [IDIOMA: {idioma_efectivo}] [NARRADOR: {genero_efectivo}] (serverless RunPod)")
             _generar_chatterbox_api(texto, idioma_efectivo, ruta_mp3, ruta_ref)
 
         print(f"  Audio : {ruta_mp3} ({ruta_mp3.stat().st_size / 1024:.0f} KB)")

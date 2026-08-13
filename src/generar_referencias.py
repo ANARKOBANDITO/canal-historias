@@ -19,6 +19,7 @@ la que funcione para el canal.
 
 import argparse
 import asyncio
+import subprocess
 from pathlib import Path
 
 try:
@@ -54,6 +55,47 @@ TEXTOS_NEUTROS = {
     ),
 }
 
+# Voces candidatas para elegir el narrador del canal (edge-tts, espanol).
+# Se usan como referencia de voice cloning en el pod (Fase 2.5).
+CANDIDATAS_ES = {
+    "hombre": [
+        ("jorge", "es-MX-JorgeNeural"),
+        ("alvaro", "es-ES-AlvaroNeural"),
+        ("tomas", "es-AR-TomasNeural"),
+        ("gonzalo", "es-CO-GonzaloNeural"),
+        ("alonso", "es-US-AlonsoNeural"),
+    ],
+    "mujer": [
+        ("dalia", "es-MX-DaliaNeural"),
+        ("elvira", "es-ES-ElviraNeural"),
+        ("elena", "es-AR-ElenaNeural"),
+        ("salome", "es-CO-SalomeNeural"),
+        ("paloma", "es-US-PalomaNeural"),
+    ],
+}
+
+TEXTO_CANDIDATAS_ES = (
+    "Bienvenidos al canal. Hoy les traigo una historia real de traicion, "
+    "de esas que te dejan sin palabras y que nadie se anima a contar. "
+    "Si llegan hasta el final, van a entender por que nunca mas confie "
+    "de la misma manera."
+)
+
+
+def _ffmpeg() -> str:
+    """Devuelve la ruta a ffmpeg (puede no estar en el PATH en Windows)."""
+    import os
+    import shutil
+
+    which = shutil.which("ffmpeg")
+    if which:
+        return which
+    candidata = Path(os.environ.get("LOCALAPPDATA", "")) / "ffmpeg"
+    if candidata.exists():
+        for p in candidata.rglob("ffmpeg.exe"):
+            return str(p)
+    return "ffmpeg"
+
 
 async def _generar_clip(texto: str, voz: str, ruta_salida: Path) -> None:
     communicate = edge_tts.Communicate(texto, voz)
@@ -65,6 +107,39 @@ async def _generar_clip(texto: str, voz: str, ruta_salida: Path) -> None:
     print(f"  {ruta_salida.name} -> {ruta_salida.stat().st_size / 1024:.0f} KB")
 
 
+def _mp3_a_wav(ruta_mp3: Path, ruta_wav: Path) -> None:
+    """Convierte el clip a WAV mono 44.1k (mejor para voice cloning)."""
+    subprocess.run([
+        _ffmpeg(), "-y", "-i", str(ruta_mp3),
+        "-ac", "1", "-ar", "44100", str(ruta_wav),
+    ], check=True, capture_output=True)
+
+
+def generar_candidatas() -> None:
+    """Genera los 10 clips de referencia candidatos (5H + 5M) como WAV."""
+    import subprocess
+
+    carpeta = CARPETA_VOCES / "candidatas"
+    carpeta.mkdir(exist_ok=True, parents=True)
+    print("Generando candidatas de voz (espanol) para voice cloning...\n")
+
+    for genero, voces in CANDIDATAS_ES.items():
+        for label, voz in voces:
+            prefijo = "h" if genero == "hombre" else "m"
+            ruta_mp3 = carpeta / f"es_{prefijo}_{label}.mp3"
+            ruta_wav = carpeta / f"es_{prefijo}_{label}.wav"
+            print(f"[{genero}] {voz}")
+            asyncio.run(_generar_clip(TEXTO_CANDIDATAS_ES, voz, ruta_mp3))
+            try:
+                _mp3_a_wav(ruta_mp3, ruta_wav)
+                print(f"  WAV: {ruta_wav.name} ({ruta_wav.stat().st_size / 1024:.0f} KB)")
+            except Exception as e:
+                print(f"  [AVISO] No se pudo convertir a WAV: {e}")
+
+    print(f"\nListo. Candidatas en {carpeta}/")
+    print("Verifica que los WAV no esten rotos antes de subirlos al pod.")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Genera clips de voz de referencia con edge-tts para voice cloning con Chatterbox."
@@ -73,7 +148,13 @@ def main():
                         help="Idioma a generar (si no se especifica, se generan los tres)")
     parser.add_argument("--voz", type=str, default=None,
                         help="Voz edge-tts especifica (ignora la default del idioma)")
+    parser.add_argument("--candidatas", action="store_true",
+                        help="Generar las 10 voces candidatas (5H + 5M) en storage/voces/candidatas/")
     args = parser.parse_args()
+
+    if args.candidatas:
+        generar_candidatas()
+        return
 
     idiomas_procesar = [args.idioma] if args.idioma else ["es", "en", "pt"]
 

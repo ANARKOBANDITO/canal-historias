@@ -87,9 +87,19 @@ Ejemplo: `python src/generar_temas.py --cantidad 10`
 Cada paso es una llamada independiente a DeepSeek. Un guion de 20 minutos
 hace ~10 llamadas y tarda 2-3 minutos.
 
-## Variacion narrativa y firma editorial
+## Calidad del guion (leccion 13/08 — reglas duras)
 
-- `variacion_narrativa.py` rota automaticamente el tipo de gancho (5 variantes:
+- **Genero del narrador = voz.** El `[GENERO:]` debe coincidir SIEMPRE con la
+  persona que narra (primera persona). Si la historia dice "mi novio...", la
+  narradora es MUJER. Instruirlo explicitamente en `system_esquema`/`system_capitulo`
+  y correr `python src/validar_guiones.py` post-generacion.
+- **Sin repeticiones:** prohibir en los prompts repetir palabras o frases
+  ("que que", frases casi identicas). El TTS las lee como sonidos extraños.
+- **Frases naturales:** frases de <= 30-40 palabras, ritmo de locucion.
+- `validar_guiones.py` detecta: genero incoherente, palabras repetidas
+  consecutivas, n-gramas loop y frases largas. Nunca locutar un guion que falle.
+
+## Variacion narrativa y firma editorial- `variacion_narrativa.py` rota automaticamente el tipo de gancho (5 variantes:
   pregunta retorica, confesion directa, dato shockeante, in medias res,
   advertencia al oyente) y el tipo de desenlace (5 variantes: justicia poetica,
   agridulce, abierto, ironico, reflexivo). Evita repetir el mismo tipo en los

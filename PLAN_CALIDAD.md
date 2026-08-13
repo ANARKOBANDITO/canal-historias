@@ -1,9 +1,31 @@
 # PLAN DE CALIDAD — Reconstruir canal-historias para producto monetizable
 
-> Fecha: 12/08. Estado: APROBADO, pendiente de ejecucion.
+> Fecha: 12/08. Estado: APROBADO. **PILOTO 13/08 ENTREGADO y validado** (audio OK,
+> subtitulos aprobados). Quedan refinamientos del feedback — ver NEXT_STEPS.md (14/08).
 > Objetivo: producir un video de calidad entregable, luego escalar a la
 > cadencia semanal (2 EN + 1 ES/PT).
 > Contexto completo: AGENTS.md, RESUMEN_PROYECTO.md, NEXT_STEPS.md.
+
+---
+
+## Piloto 13/08 — resultado y refinamientos pendientes
+
+**Entregado:** video ES de 16 min (16:9 + 9:16), audio alonso 97% cobertura,
+subtitulos karaoke aprobados, gameplay de fondo, bajado con rclone.
+
+**Feedback del usuario (todo accionable):**
+1. Voz incorrecta: el guion era de narradora mujer pero el `[GENERO:]` decia hombre.
+2. Guiones con palabras repetidas / frases mal redactadas → TTS con sonidos extraños.
+3. Sonidos extraños del narrador en las pausas (artefactos de fragmentos).
+4. Gameplay pixelado (gameplay_lite a 2 Mbps demasiado comprimido).
+5. 9:16 debe dividirse en partes de ~5 min con CTA narrado ("para la parte X, like y seguir").
+6. Replicate sin credito (402) → avatar/miniaturas/tarjeta pendientes.
+
+**Fix aplicado ya:** `validar_guiones.py` ahora detecta coherencia de genero,
+palabras repetidas, n-gramas loop y frases largas.
+
+**Plan 14/08:** ver `NEXT_STEPS.md` (assets del canal, guiones mejorados, audio
+sin artefactos, gameplay de calidad, shorts con CTA, NVENC).
 
 ---
 

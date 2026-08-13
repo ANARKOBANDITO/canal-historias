@@ -48,6 +48,7 @@ RUTAS_CORE = [
 RUTAS_TODO = [
     ("output/audio", "output/audio"),
     ("output/subtitulos_ass", "output/subtitulos_ass"),
+    ("output/muestras_voz", "output/muestras_voz"),
 ]
 
 WINGET_RCLONE = (

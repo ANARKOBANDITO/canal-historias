@@ -24,9 +24,9 @@ CARPETA_AVATAR = Path("storage/avatar")
 CARPETA_ESCENAS = Path("output/miniaturas/_escenas")
 
 # Backend de generacion de escena.
+# "api"   -> Qwen-Image-Edit por API (Replicate, requiere credito) — elegido 12/08.
 # "local" -> Qwen-Image-Edit en GPU local (Vast.ai). Requiere el modelo instalado.
-# "api"   -> endpoint remoto (se configurara con la API de Qwen).
-BACKEND = "local"
+BACKEND = "api"
 
 # Mapeo expresion -> archivo avatar (si se detecta el tono del guion)
 EXPRESION_POR_TONO = {
@@ -91,9 +91,19 @@ def generar_escena(ruta_guion: Path, ruta_png: Path, backend: str = BACKEND) -> 
     )
 
     if backend == "api":
-        # TODO: conectar con la API de Qwen cuando el usuario la provea.
-        print("  [INFO] Backend API no configurado aun. Se usara fondo generico.")
-        _fondo_generico(ruta_png)
+        from PIL import Image as PILImage
+        from qwen_api import data_url, descargar, ejecutar_prediccion
+
+        base = PILImage.new("RGB", (256, 144), (18, 18, 24))
+        ruta_base = ruta_png.parent / "_base.png"
+        ruta_base.parent.mkdir(exist_ok=True, parents=True)
+        base.save(ruta_base)
+        try:
+            url = ejecutar_prediccion(prompt, [data_url(ruta_base)], aspect="16:9", formato="png")
+            descargar(url, ruta_png)
+            print(f"  Escena generada (Qwen API): {ruta_png}")
+        finally:
+            ruta_base.unlink(missing_ok=True)
         return
 
     # Backend local (Vast.ai): Qwen-Image-Edit con diffusers

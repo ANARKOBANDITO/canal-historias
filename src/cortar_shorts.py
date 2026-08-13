@@ -34,11 +34,12 @@ CARPETA_GUIONES = Path("output/guiones_listos")
 CARPETA_CTA = Path("output/cta")
 
 DURACION_CLIP = 300  # duracion objetivo de cada short en segundos (~5 min)
+MIN_DURACION_CLIP = 90  # minimo de un clip; por debajo se fusiona (prohibido clips de 45s)
 
 TEXTO_CTA_POR_IDIOMA = {
-    "es": "¡Dale like para la parte {n}!",
-    "en": "Like for part {n}!",
-    "pt": "Deixe o like para a parte {n}!",
+    "es": "Para la parte {n}, dale like y seguí.",
+    "en": "For part {n}, like and follow.",
+    "pt": "Para a parte {n}, deixa o like e segue.",
 }
 VOZ_EDGE_POR_IDIOMA = {
     "es": "es-MX-JorgeNeural",
@@ -74,6 +75,31 @@ def _leer_tiempos_ass(ruta_ass: Path) -> list[float]:
     return sorted(tiempos)
 
 
+def _rebalancear_cortes(cortes: list[float], duration: float, minimo: float = MIN_DURACION_CLIP) -> list[float]:
+    """Fusiona segmentos < minimo para que ningun clip quede corto (ej. 45s).
+
+    Se eliminan cortes hasta que todos los segmentos cumplan el minimo.
+    Si al final queda un solo segmento, se devuelve [] (no dividir).
+    """
+    puntos = [0.0] + cortes + [duration]
+    cambiado = True
+    while cambiado:
+        cambiado = False
+        for i in range(len(puntos) - 1):
+            seg = puntos[i + 1] - puntos[i]
+            if seg < minimo:
+                if i < len(puntos) - 2:
+                    del puntos[i + 1]  # fusionar corto con el siguiente
+                else:
+                    del puntos[i]      # ultimo corto: fusionar con el anterior
+                cambiado = True
+                break
+    resultado = puntos[1:-1]
+    if len(resultado) <= 1:
+        return []
+    return resultado
+
+
 def _puntos_corte(duration: float, tiempos_sub: list[float], duracion_objetivo: float = DURACION_CLIP, puntos_capitulo: list[float] | None = None) -> list[float]:
     if duration <= duracion_objetivo * 1.5:
         return []
@@ -101,7 +127,7 @@ def _puntos_corte(duration: float, tiempos_sub: list[float], duracion_objetivo: 
             cortes.append(cursor)
         cursor = cortes[-1] + duracion_objetivo
 
-    return cortes
+    return _rebalancear_cortes(cortes, duration)
 
 
 def _leer_fines_capitulo(ruta_guion: Path) -> list[float]:

@@ -60,15 +60,21 @@ python src/provisionar_vast.py --destruir <ID>
    `ls -la` en el pod tras subir (puede quedar truncado).
 4. **HF_HUB_DISABLE_XET=1** SIEMPRE al descargar modelos HF en el pod
    (el acelerador Xet falla en hosts del marketplace).
-5. **Chatterbox hardcodea max 1000 tokens**: el texto se divide en
-   fragmentos (~180 palabras) dentro de generar_audio.py. Un guion de 20 min
-   → ~17 fragmentos. Nunca mandar el guion entero de una vez.
+5. **Chatterbox hardcodea max 1000 tokens**: `generar_audio.py` fragmenta por
+   PARRAFOS (pausas de 0.35s entre fragmentos) — no por ~180 palabras. Un guion
+   de 20 min → ~10-15 fragmentos. Validar cobertura con `src/qa_audio.py`.
 6. **El pod borra los videos al destruir**: bajar SIEMPRE los resultados
    antes de `--destruir`. Los frames de control (PNG) sirven para validar
    sin bajar los MP4 gigantes.
 7. **PlayRes**: tras desplegar, verificar que no queden directorios anidados
    (`src/src`, `guiones_listos/guiones_listos`) — scp -r los crea si el
    destino ya existe. Corregir con mv antes de correr el pipeline.
+8. **HOST CAIDO → CAMBIAR DE HOST (leccion 13/08).** Si el host se cae
+   (SSH banner timeout, instancia "offline", scp colgado, boot > 15 min),
+   NO insistir infinitamente: `python src/provisionar_vast.py --salud <ID>
+   --clave ...` para diagnosticar y `--cambiar-de-host <ID> --clave ...`
+   para destruir y provisionar OTRO host. Se pierde el cache del modelo
+   (~7 min) pero se evita facturar un host muerto.
 
 ## Flujo de produccion por video (orden EXACTO)
 

@@ -10,6 +10,15 @@ corto, asegurando que los subtitulos se vean bien, que se corte en finales
 de capitulo (no a mitad de frase), y que cada parte termine con el CTA
 "like para la parte N".
 
+## Requisitos confirmados (13/08, feedback del usuario)
+
+- **Duracion por parte ~5 min** (no mas). Un video de 16 min se divide en
+  ~3 partes (p.ej. 5 + 5 + 6). Nunca clips < 90s.
+- **CTA narrado** al final de cada parte: "para la parte X, like y seguir"
+  (visual + audio). `cortar_shorts.py` lo agrega con edge-tts.
+- Corte en **fin de capitulo** (guion en `output/guiones_listos/`) o pausa
+  natural entre subtitulos; nunca a mitad de palabra.
+
 ## Regla de oro: render independiente, NO recortar el video 16:9
 
 El video 9:16 se renderiza DIRECTAMENTE desde el gameplay con center-crop

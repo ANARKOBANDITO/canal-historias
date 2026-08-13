@@ -13,9 +13,12 @@ Pipeline automatizado que genera **guiones narrados en primera persona** estilo
 multi-motor) + subtitulos karaoke (ASS) + gameplay de fondo. Destino: YouTube
 (16:9) y TikTok/Shorts/Reels/IG (9:16 dividido en partes de ~5 min con CTA).
 
-**Estado actual:** pipeline CPU completo probado. Se agregaron tarjeta Reddit
-(16:9), miniaturas (Qwen + Pillow), revision con MiniMax M3 y CTA de partes.
-RunPod Pods GPU descartados (driver 580 roto). Vast.ai es el proveedor GPU elegido.
+**Estado actual (13/08):** primer video PILOTO ES entregado (16:9 + 9:16, 16 min,
+audio alonso 97% cobertura, subtitulos aprobados). Voz del canal definida:
+alonso (hombre) + dalia (mujer) para es/en/pt. Quedan refinamientos del feedback
+(ver NEXT_STEPS.md): genero del narrador, guiones sin repeticiones, gameplay de
+calidad, 9:16 en partes con CTA, avatar/miniaturas (Replicate sin credito),
+NVENC. RunPod Pods descartados (driver 580 roto); Vast.ai es el proveedor GPU.
 Nombre del canal: **r/HopStories**.
 
 ---

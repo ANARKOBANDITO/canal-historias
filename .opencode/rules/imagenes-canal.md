@@ -45,3 +45,14 @@
 - Pillow es dependencia obligatoria (`pip install pillow`).
 - En el pod, cargar Qwen-Image-Edit con cuantizacion 4-bit (bitsandbytes) para
   que quepa en 24GB: `pipe = QwenImageEditPipeline.from_pretrained(..., load_in_4bit=True)`.
+
+## Assets multi-idioma (14/08, pendiente de credito Replicate)
+
+- **Foto de perfil** por idioma (~512x512): avatar del canal (conejito-robot)
+  sobre fondo del color de cada idioma, o con texto corto. Generar con
+  Qwen-Image-Edit + Pillow (`storage/perfil/`).
+- **Banner de canal** por idioma (~1500x500 o 2048x1152): avatar + nombre
+  r/HopStories + tagline en el idioma. Salida en `storage/banners/`.
+- Reuse: `src/qwen_api.py` (data URL + prediccion) y el avatar de
+  `storage/avatar/avatar_<expresion>.png`.
+- Ver skill `assets-canal`.

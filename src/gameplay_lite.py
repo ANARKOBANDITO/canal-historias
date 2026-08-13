@@ -39,12 +39,15 @@ def _ffmpeg() -> str:
 
 
 def comprimir(ruta_crudo: Path, ruta_lite: Path, duracion: int) -> None:
-    """Comprime a loop ligero: -t duracion, scale 1080p, bitrate video 2M, audio AAC 96k."""
+    """Comprime a loop ligero: -t duracion, scale 1080p, bitrate video 6M, audio AAC 96k.
+
+    Nota (13/08): a 2 Mbps el gameplay quedaba pixelado. Usar crf 20 / maxrate 6M.
+    """
     cmd = [
         _ffmpeg(), "-y", "-i", str(ruta_crudo),
         "-t", str(duracion),
         "-vf", "scale='min(1920,iw)':-2:force_original_aspect_ratio=decrease",
-        "-c:v", "libx264", "-preset", "fast", "-crf", "28", "-maxrate", "2M", "-bufsize", "4M",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-maxrate", "6M", "-bufsize", "12M",
         "-c:a", "aac", "-b:a", "96k",
         "-movflags", "+faststart",
         str(ruta_lite),

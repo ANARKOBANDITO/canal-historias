@@ -30,9 +30,12 @@
 - **HF_HUB_DISABLE_XET=1** en el pod: el acelerador Xet de HF falla en hosts
   del marketplace (`xet-read-token` error de red). Exportar antes de
   `from_pretrained` (generar_audio.py lo hace con `os.environ.setdefault`).
-- Voice cloning: necesita clip de referencia ~10s por idioma en `storage/voces/`
-  (generar con `generar_referencias.py`, edge-tts). Voces: es-MX-JorgeNeural,
-  en-US-GuyNeural, pt-BR-AntonioNeural.
+- Voice cloning: la voz del canal es 1 clip por GENERO usado en TODOS los
+  idiomas (es/en/pt). Narrador HOMBRE = alonso (`referencia_hombre.wav`),
+  MUJER = dalia (`referencia_mujer.wav`), ambos en `storage/voces/`.
+  `generar_audio.py` elige la referencia por `[GENERO:]` del guion
+  (`VOZ_REFERENCIA_POR_GENERO`). Generar las referencias con
+  `generar_referencias.py --candidatas` y elegir las ganadoras.
 - El CTA "like para la parte N" usa edge-tts por defecto (`src/generar_cta_parte.py`).
 
 ## RunPod: estado

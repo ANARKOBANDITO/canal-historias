@@ -1,5 +1,31 @@
 # Sesion GPU en Vast.ai — convenciones tecnicas (11/08, validado)
 
+## REGLA DEL HOST CAIDO (leccion 13/08) — NO insistir, cambiar de host
+
+El 13/08 un host (ssh3.vast.ai:39136) se cayo repetidamente y se perdio MUCHO
+tiempo insistiendo: SSH con "banner exchange" timeout, instancia "offline" en
+la API (aunque cu_state dijera running), scp/rclone colgados, boot en
+"loading" > 15 min.
+
+**REGLA DURA: tras 2-3 fallos consecutivos (o si la instancia pasa a
+"offline", o si SSH no responde en 2 intentos), DESTRUIR y alquilar OTRO host.
+No insistir infinitamente.** Se pierde el cache del modelo (~7 min de
+re-descarga) pero se gana tiempo y se evita facturar un host muerto.
+
+Sintomas de host caido:
+- `ssh: Connection timed out during banner exchange`
+- `Connection to <ip> port <p> timed out` (repetido)
+- Instancia `actual_status: offline` en la API de Vast
+- scp/rclone que se cuelgan en archivos chicos
+- Boot en `loading` > 15 min (posible imagen pull lenta O host muerto)
+
+Automatizado en `src/provisionar_vast.py`:
+- `--salud <ID> --clave ...` → diagnostica (estado + SSH round-trip).
+- `--cambiar-de-host <ID> --clave ...` → destruye la instancia y provisiona
+  OTRA en un comando. Registra el host descartado en `data/hosts_descartados.txt`.
+- Si la nueva cae en el mismo cluster, repetir `--cambiar-de-host` o elegir
+  una region distinta con `--buscar` + `--alquilar <OFFER_ID>`.
+
 ## Pipeline GPU FUNCIONA (validado 11/08 en RTX 3090)
 
 - **Smoke test CUDA**: `cuInit == 0` → la instancia sirve. El mismo test que
@@ -20,6 +46,7 @@
 | `NameError: name 'Kokoro' is not defined` | Type hint evaluado al importar sin kokoro-onnx | `from __future__ import annotations` en scripts con imports opcionales |
 | Descarga HF se corta (`xet-read-token` error) | Acelerador Xet falla en hosts del marketplace | `export HF_HUB_DISABLE_XET=1` antes de todo `from_pretrained` |
 | `ChatterboxMultilingualTTS.__init__() got an unexpected keyword 'model_id'` | API 0.1.7 cambio el constructor | Usar `from_pretrained(device=...)` + `generate(text=..., language_id=..., audio_prompt_path=...)` |
+| **NVENC no funciona en el pod (13/08)** | driver 570.172 = nvenc API **13.0**; el ffmpeg BtbN `latest` (2026) exige API **13.1 / driver 610**. El ffmpeg de Ubuntu no detecta el device ("No capable devices found"); johnvansickle static NO trae nvenc. Resultado: render cae a **libx264 CPU** (~25 min por video 16 min, archivos de ~0.8-1 GB) | FIX PENDIENTE: instalar un ffmpeg BtbN de una **release 2025** (previa al bump 13.1) que requiera nvenc API 13.0, o subir el filtro de `buscar_vast` para hosts con driver mas nuevo. Hasta entonces, presupuestar render CPU lento o usar previews. |
 
 ## Modelos e imagenes (decision 11/08)
 

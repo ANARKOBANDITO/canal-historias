@@ -33,6 +33,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 URL_API = "https://console.vast.ai"
 
@@ -219,7 +220,7 @@ def esperar(inst_id: int, timeout: int = 600) -> dict:
 
 
 def smoke_test(inst_id: int, clave: str) -> None:
-    inst = esperar(inst_id, timeout=300)
+    inst = esperar(inst_id, timeout=1800)
     print("\n[1/3] Smoke test CUDA (obligatorio, ~$0.01 si falla)...")
     rc = _ssh(inst["ssh_host"], inst["ssh_port"], clave, SMOKE_TEST)
     if rc != 0:
@@ -291,7 +292,7 @@ def provisionar(clave: str, max_precio: float, conservar: bool) -> None:
             destruir(inst_id)
         else:
             print("Conservando instancia (--conservar). No olvides destruirla al terminar.")
-    except Exception as e:
+    except BaseException as e:
         print(f"\nError durante el provisionamiento: {e}")
         print("Destruyendo instancia para no acumular costo...")
         try:
@@ -311,6 +312,54 @@ def parar(inst_id: int) -> None:
     print(f"Deteniendo instancia {inst_id} (GPU pausada, disco sigue facturando)...")
     data = _api("PUT", f"/api/v0/instances/{inst_id}/", {"state": "stopped"})
     print(f"  {data}")
+
+
+def cambiar_de_host(inst_id: int, clave: str, max_precio: float) -> None:
+    """Destruye la instancia actual (host caido) y provisiona OTRA.
+
+    LECCION 13/08: el host de la GPU se cayo repetidamente (SSH con
+    'banner exchange' timeout, instancia 'offline' en la API, scp/rclone
+    colgados, boot en 'loading' > 15 min) y se perdio mucho tiempo
+    insistiendo. REGLA: ante un host caido, destruir y alquilar OTRO,
+    aunque se pierda el cache del modelo (~7 min de re-descarga).
+    """
+    print(f"\n=== CAMBIAR DE HOST (instancia {inst_id}) ===")
+    inst = {}
+    try:
+        inst = _datos_instancia(inst_id)
+    except Exception:
+        pass
+    host_old = inst.get("ssh_host", "?")
+    print(f"Host caido: {host_old}. Regla 13/08: NO insistir, cambiar de host.")
+
+    log = Path(__file__).resolve().parents[1] / "data" / "hosts_descartados.txt"
+    with open(log, "a", encoding="utf-8") as f:
+        f.write(f"{inst_id}\t{host_old}\t{time.strftime('%Y-%m-%d %H:%M')}\n")
+
+    print(f"Destruyendo instancia {inst_id}...")
+    try:
+        destruir(inst_id)
+    except Exception as e:
+        print(f"  [aviso] no se pudo destruir: {e}")
+
+    print("Provisionando una instancia NUEVA (distinta oferta)...")
+    provisionar(clave, max_precio, conservar=True)
+    print(f"\nRegistro de hosts descartados: {log}")
+
+
+def salud(inst_id: int, clave: str) -> None:
+    """Diagnostica rapido si el host esta caido (SSH no responde)."""
+    inst = _datos_instancia(inst_id)
+    estado = inst.get("actual_status")
+    print(f"Instancia {inst_id}: {estado} | ssh: {inst.get('ssh_host')}:{inst.get('ssh_port')}")
+    if estado != "running":
+        print("  [host caido o no disponible] -> usar: --cambiar-de-host <ID> --clave ...")
+        return
+    rc = _ssh(inst["ssh_host"], inst["ssh_port"], clave, "echo SALUD_OK", reintentos=2, pausa=3)
+    if rc == 0:
+        print("  [OK] SSH responde. Host sano.")
+    else:
+        print("  [X] SSH NO responde -> host caido. Usar: --cambiar-de-host <ID> --clave ...")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -340,6 +389,10 @@ def main():
                         help="Destruir la instancia (fin de facturacion)")
     parser.add_argument("--parar", type=int, metavar="INSTANCE_ID",
                         help="Pausar la instancia (GPU detenida)")
+    parser.add_argument("--cambiar-de-host", type=int, metavar="INSTANCE_ID",
+                        help="Host caido: destruir la instancia y provisionar OTRA (leccion 13/08)")
+    parser.add_argument("--salud", type=int, metavar="INSTANCE_ID",
+                        help="Diagnosticar si el host esta caido (estado + SSH)")
     parser.add_argument("--clave", help="Ruta a la clave privada SSH")
     parser.add_argument("--max-precio", type=float, default=0.30,
                         help="Tope de $/hr (default 0.30)")
@@ -373,6 +426,14 @@ def main():
         destruir(args.destruir)
     elif args.parar:
         parar(args.parar)
+    elif args.cambiar_de_host:
+        if not args.clave:
+            raise SystemExit("Falta --clave para --cambiar-de-host.")
+        cambiar_de_host(args.cambiar_de_host, args.clave, args.max_precio)
+    elif args.salud:
+        if not args.clave:
+            raise SystemExit("Falta --clave para --salud.")
+        salud(args.salud, args.clave)
     else:
         parser.print_help()
 
